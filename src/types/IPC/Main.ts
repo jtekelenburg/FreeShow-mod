@@ -201,7 +201,7 @@ export enum Main {
 }
 
 export interface MainSendPayloads {
-    [Main.PROJECTOR_SAVE]: { id: string; name: string; host: string; port?: number; groups?: string[] }
+    [Main.PROJECTOR_SAVE]: { id: string; name: string; host: string; port?: number; groups?: string[]; password?: string }
     [Main.PROJECTOR_REMOVE]: { id: string }
     [Main.PROJECTOR_INPUT]: { ids: string[]; code: string }
     [Main.PROJECTOR_COMMAND]: { ids: string[]; action: "powerOn" | "powerOff" | "powerState" | "muteVideo" | "unmuteVideo" }
