@@ -26,12 +26,20 @@ async function loadCredentials() {
 }
 
 async function persistCredentials() {
-    await fs.writeFile(credentialsPath(), JSON.stringify(credentials), { mode: 0o600 })
+    const file = credentialsPath()
+    const temp = file + ".tmp-" + process.pid
+    try {
+        await fs.writeFile(temp, JSON.stringify(credentials), { mode: 0o600 })
+        await fs.rename(temp, file)
+    } finally {
+        await fs.rm(temp, { force: true }).catch(() => {})
+    }
 }
 
 async function ensureLoaded() {
     if (!loaded) loaded = loadProjectors(configPath(), fleet).then(() => loadCredentials())
-    await loaded
+    try { await loaded }
+    catch (err) { loaded = undefined; fleet.list().forEach((p) => fleet.remove(p.id)); credentials = {}; throw err }
 }
 
 function persist() {
