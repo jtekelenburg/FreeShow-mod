@@ -24,7 +24,6 @@ jobs:
         shell: pwsh
     env:
       npm_config_arch: x64
-      npm_config_python: C:\hostedtoolcache\windows\Python\3.11.9\x64\python.exe
 
     steps:
       - name: Checkout
