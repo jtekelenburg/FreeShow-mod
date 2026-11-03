@@ -16,6 +16,22 @@ describe("MediaWorkerSupervisor", () => {
         expect(supervisor.snapshot().failures).toBe(2)
     })
 
+    it("resets failure backoff once and avoids notifications for repeated healthy messages", () => {
+        const supervisor = new MediaWorkerSupervisor()
+        const states: string[] = []
+        supervisor.subscribe((snapshot) => states.push(snapshot.state))
+        supervisor.starting()
+        supervisor.started(1)
+        supervisor.exited(1)
+        expect(supervisor.snapshot().retryDelayMs).toBe(1000)
+        supervisor.starting()
+        supervisor.started(2)
+        supervisor.healthy()
+        supervisor.healthy()
+        expect(supervisor.snapshot().failures).toBe(0)
+        expect(states.filter((state) => state === "running")).toHaveLength(3)
+    })
+
     it("prevents recovery after shutdown", () => {
         const supervisor = new MediaWorkerSupervisor()
         supervisor.starting()
