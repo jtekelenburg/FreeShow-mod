@@ -1259,6 +1259,7 @@ export function runSenderWorker(adapters: SenderAdapter[]) {
         const next = previous.catch(() => {}).then(operation).catch((err) => console.error(`[BMD] Operation failed for ${id}:`, err))
         bmdOperations.set(id, next)
         void next.finally(() => { if (bmdOperations.get(id) === next) bmdOperations.delete(id) })
+        return next
     }
     const bmdReportState = (outputId: string, requestId?: number) => {
         const d = BlackmagicSender.playbackData[outputId]
@@ -1375,22 +1376,28 @@ export function runSenderWorker(adapters: SenderAdapter[]) {
                 bmdRequestIds.clear()
                 // Wait for in-flight native initializations before closing their devices.
                 // Queue each stop on its own output so a late init cannot reopen a stopped device.
-                for (const id of new Set([...bmdOperations.keys(), ...Object.keys(BlackmagicSender.playbackData)])) {
-                    queueBmd(id, () => { bmdForget(id); BlackmagicSender.stop(id) })
-                }
-                if (!bmdOperations.size) {
-                    bmdForget()
-                    BlackmagicSender.stopAll()
+                {
+                    const stops = [...new Set([...bmdOperations.keys(), ...Object.keys(BlackmagicSender.playbackData)])].map((id) =>
+                        queueBmd(id, () => { bmdForget(id); BlackmagicSender.stop(id) })
+                    )
+                    void Promise.all(stops).then(() => {
+                        if (bmdRequestIds.size) return
+                        bmdForget()
+                        BlackmagicSender.stopAll()
+                    })
                 }
                 break
             case "bmdShutdown":
                 bmdRequestIds.clear()
-                for (const id of new Set([...bmdOperations.keys(), ...Object.keys(BlackmagicSender.playbackData)])) {
-                    queueBmd(id, () => { bmdForget(id); BlackmagicSender.stop(id) })
-                }
-                if (!bmdOperations.size) {
-                    bmdForget()
-                    BlackmagicSender.shutdown()
+                {
+                    const stops = [...new Set([...bmdOperations.keys(), ...Object.keys(BlackmagicSender.playbackData)])].map((id) =>
+                        queueBmd(id, () => { bmdForget(id); BlackmagicSender.stop(id) })
+                    )
+                    void Promise.all(stops).then(() => {
+                        if (bmdRequestIds.size) return
+                        bmdForget()
+                        BlackmagicSender.shutdown()
+                    })
                 }
                 break
             case "bmdReset":
