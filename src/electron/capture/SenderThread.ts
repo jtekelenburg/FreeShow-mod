@@ -8,21 +8,26 @@ export class SenderThread {
     private static worker: Worker | null = null
     private static listeners: ((msg: any) => void)[] = []
     private static exitHandlers: (() => void)[] = []
+    private static generation = 0
 
     static get(): Worker | null {
         if (this.worker) return this.worker
 
         try {
-            this.worker = new Worker(join(__dirname, "senderWorkerHost.js"), {
+            const worker = new Worker(join(__dirname, "senderWorkerHost.js"), {
                 env: { ...process.env, UV_THREADPOOL_SIZE: "32" }
             })
-            this.worker.on("message", (msg: any) => {
+            this.worker = worker
+            this.generation++
+            worker.on("message", (msg: any) => {
+                if (this.worker !== worker) return
                 if (!msg?.type) return
                 if (SenderCapture.handleMessage(msg)) return
                 for (const fn of this.listeners) fn(msg)
             })
-            this.worker.on("error", (err) => console.error("Sender worker error:", err))
-            this.worker.on("exit", (code) => {
+            worker.on("error", (err) => console.error("Sender worker error:", err))
+            worker.on("exit", (code) => {
+                if (this.worker !== worker) return
                 if (code !== 0) console.error(`Sender worker exited with code ${code}`)
                 this.worker = null
                 for (const fn of this.exitHandlers) fn()
@@ -33,6 +38,10 @@ export class SenderThread {
         }
 
         return this.worker
+    }
+
+    static getGeneration(): number {
+        return this.generation
     }
 
     static subscribe(onMessage: (msg: any) => void, onExit: () => void) {
