@@ -791,18 +791,6 @@ export class BlackmagicSender {
         // Use queued audio to get exactly the right amount for this frame
         const audioChannels = data.audioChannels || 2
         const outputAudioQueue = this.audioQueuesByOutput[outputId]
-        const rate = audioFrameRateRatio(this.getAccurateFrameRate(data.displayMode))
-        const samplesForThisFrame = audioSamplesForFrame(data.scheduledFrames, 48000, rate.numerator, rate.denominator)
-        const audioData = outputAudioQueue && outputAudioQueue.length > 0 && audioFrame !== null ? this.getAudioForFrame(outputId, audioChannels, data.displayMode, samplesForThisFrame) : Buffer.alloc(samplesForThisFrame * 2 * audioChannels)
-
-        // Validate audio buffer size
-        const expectedSampleCount = samplesForThisFrame
-        const expectedAudioSize = expectedSampleCount * 2 * audioChannels
-        if (audioData.length !== expectedAudioSize && now - (data.lastAudioSizeWarningTime || 0) > 5000) {
-            data.lastAudioSizeWarningTime = now
-            console.warn(`Audio buffer size mismatch: got ${audioData.length} bytes, expected ${expectedAudioSize} bytes (samples: ${expectedSampleCount}, channels: ${data.audioChannels})`)
-        }
-
         // Calculate stream time in DeckLink timescale units (duration ticks) for this frame.
         const frameDurationTicks = data.frameDurationTicks || 1000
         // keep each frame at least one period ahead of the card's clock, or the card drops it as late
@@ -823,6 +811,19 @@ export class BlackmagicSender {
             }
         }
         const currentTime = data.scheduledFrames * frameDurationTicks
+
+        const rate = audioFrameRateRatio(this.getAccurateFrameRate(data.displayMode))
+        const samplesForThisFrame = audioSamplesForFrame(data.scheduledFrames, 48000, rate.numerator, rate.denominator)
+        const audioData = outputAudioQueue && outputAudioQueue.length > 0 && audioFrame !== null ? this.getAudioForFrame(outputId, audioChannels, data.displayMode, samplesForThisFrame) : Buffer.alloc(samplesForThisFrame * 2 * audioChannels)
+
+        // Validate audio buffer size
+        const expectedSampleCount = samplesForThisFrame
+        const expectedAudioSize = expectedSampleCount * 2 * audioChannels
+        if (audioData.length !== expectedAudioSize && now - (data.lastAudioSizeWarningTime || 0) > 5000) {
+            data.lastAudioSizeWarningTime = now
+            console.warn(`Audio buffer size mismatch: got ${audioData.length} bytes, expected ${expectedAudioSize} bytes (samples: ${expectedSampleCount}, channels: ${data.audioChannels})`)
+        }
+
 
         // Calculate correct sample frame count based on actual frame rate
         // For 48kHz audio: sampleFrameCount = 48000 / frameRate
