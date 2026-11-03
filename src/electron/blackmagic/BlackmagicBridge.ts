@@ -101,7 +101,7 @@ export class BlackmagicBridge {
     private static onWorkerMessage(msg: any) {
         switch (msg?.type) {
             case "bmdState": {
-                if (this.initWaiters.has(msg.outputId) && this.pendingWorkerGeneration.get(msg.outputId) !== SenderThread.getGeneration()) break
+                if (this.initWaiters.has(msg.outputId) && (this.pendingWorkerGeneration.get(msg.outputId) !== SenderThread.getGeneration() || msg.requestId !== this.initGeneration.get(msg.outputId))) break
                 const st: BmdState = { ready: !!msg.ready, displayMode: msg.displayMode || "", pixelFormat: msg.pixelFormat || "", enableKeying: !!msg.enableKeying, colorSpace: msg.colorSpace || "", targetSize: msg.targetSize || { width: 0, height: 0 }, stable: msg.stable !== false, framerate: Number(msg.framerate) || 0 }
                 const was = this.states.get(msg.outputId)
                 // Ignore unsolicited readiness from an output that was stopped or timed out.
@@ -213,7 +213,7 @@ export class BlackmagicBridge {
                 this.settleInit(outputId, false)
             }, this.INIT_TIMEOUT_MS))
             try {
-                worker.postMessage({ type: "bmdInit", outputId, deviceIndex, displayMode, pixelFormat, enableKeying, audioChannels, colorSpace })
+                worker.postMessage({ type: "bmdInit", outputId, requestId: generation, deviceIndex, displayMode, pixelFormat, enableKeying, audioChannels, colorSpace })
             } catch (err) {
                 console.error(`[BMD] Could not initialize ${outputId}:`, err)
                 this.settleInit(outputId, false)
