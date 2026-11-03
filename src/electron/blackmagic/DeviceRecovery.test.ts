@@ -15,6 +15,18 @@ describe("Blackmagic device recovery identity", () => {
         expect(resolveRecoveryDeviceIndex(undefined, 2, devices)).toBe(-1)
         expect(resolveRecoveryDeviceIndex(undefined, -1, devices)).toBe(-1)
     })
+    it("recovers when a disconnected device returns at a different index", () => {
+        const before = [{ deviceHandle: "decklink-A" }, { deviceHandle: "decklink-B" }]
+        const unplugged = [{ deviceHandle: "decklink-B" }]
+        const replugged = [{ deviceHandle: "decklink-B" }, { deviceHandle: "decklink-A" }]
+        expect(resolveRecoveryDeviceIndex("decklink-A", 0, before)).toBe(0)
+        expect(resolveRecoveryDeviceIndex("decklink-A", 0, unplugged)).toBe(-1)
+        expect(resolveRecoveryDeviceIndex("decklink-A", 0, replugged)).toBe(1)
+    })
+    it("does not recover a missing device into an empty inventory", () => {
+        expect(resolveRecoveryDeviceIndex("decklink-A", 0, [])).toBe(-1)
+        expect(resolveRecoveryDeviceIndex(undefined, 0, [])).toBe(-1)
+    })
     it("rejects invalid fallback indexes", () => {
         expect(resolveRecoveryDeviceIndex(undefined, Number.NaN, devices)).toBe(-1)
         expect(resolveRecoveryDeviceIndex(undefined, 0.5, devices)).toBe(-1)
