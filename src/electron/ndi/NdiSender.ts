@@ -25,6 +25,34 @@ export class NdiSender {
     } = {}
 
     private static subscribed = false
+    private static desiredSenders = new Map<string, { name: string; groups?: string }>()
+    private static recoveryTimer: ReturnType<typeof setTimeout> | null = null
+    private static recoveryAttempt = 0
+    private static readonly MAX_RECOVERY_DELAY_MS = 30000
+
+    private static scheduleRecovery() {
+        if (this.recoveryTimer || !this.desiredSenders.size) return
+        const delay = Math.min(1000 * Math.pow(2, Math.min(this.recoveryAttempt++, 5)), this.MAX_RECOVERY_DELAY_MS)
+        this.recoveryTimer = setTimeout(() => {
+            this.recoveryTimer = null
+            const worker = this.worker
+            if (!worker) {
+                this.scheduleRecovery()
+                return
+            }
+            for (const [id, config] of this.desiredSenders) {
+                if (this.NDI[id]?.sender) continue
+                this.NDI[id] = { ...config, sender: true, status: "reconnecting", inFlight: 0 }
+                try {
+                    worker.postMessage({ type: "create", protocol: "ndi", id, ...config })
+                } catch (err) {
+                    delete this.NDI[id]
+                    console.error(`NDI recovery failed for ${id}:`, err)
+                }
+            }
+            if ([...this.desiredSenders.keys()].some((id) => !this.NDI[id]?.sender)) this.scheduleRecovery()
+        }, delay)
+    }
     private static get worker() {
         if (!this.subscribed) {
             this.subscribed = true
@@ -39,6 +67,7 @@ export class NdiSender {
                         toApp("NDI", { channel: "SEND_DATA", data: { id, status: "disconnected", connections: 0 } })
                     }
                     this.NDI = {}
+                    this.scheduleRecovery()
                 }
             )
         }
@@ -69,6 +98,7 @@ export class NdiSender {
             if (!data) return
 
             data.status = msg.status
+            if (msg.status !== "disconnected" && msg.status !== "error") this.recoveryAttempt = 0
             data.connections = msg.connections
             const newStatus = String(msg.status) + String(msg.connections)
             if (newStatus !== data.previousStatus) {
@@ -78,6 +108,7 @@ export class NdiSender {
             }
         } else if (msg.type === "createFailed") {
             delete this.NDI[msg.id]
+            this.scheduleRecovery()
         } else if (msg.type === "videoDone") {
             const data = this.NDI[msg.id]
             if (data) data.inFlight = Math.max(0, (data.inFlight ?? 0) - 1)
@@ -107,18 +138,34 @@ export class NdiSender {
     }
 
     static async createSenderNDI(id: string, name = "", groups?: string) {
+        this.desiredSenders.set(id, { name, groups })
         if (this.NDI[id]) {
             this.stopSenderNDI(id)
         }
 
         const worker = this.worker
-        if (!worker) return
+        if (!worker) {
+            this.scheduleRecovery()
+            return
+        }
 
         this.NDI[id] = { name, groups, sender: true, status: "unconnected" }
-        worker.postMessage({ type: "create", protocol: "ndi", id, name, groups })
+        try {
+            worker.postMessage({ type: "create", protocol: "ndi", id, name, groups })
+        } catch (err) {
+            delete this.NDI[id]
+            console.error(`NDI sender creation failed for ${id}:`, err)
+            this.scheduleRecovery()
+        }
     }
 
     static stopSenderNDI(id: string) {
+        this.desiredSenders.delete(id)
+        if (!this.desiredSenders.size && this.recoveryTimer) {
+            clearTimeout(this.recoveryTimer)
+            this.recoveryTimer = null
+            this.recoveryAttempt = 0
+        }
         if (!this.NDI[id]) return
 
         delete this.NDI[id]
