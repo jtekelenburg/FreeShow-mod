@@ -32,6 +32,7 @@ export class BlackmagicBridge {
     private static desiredOutputs = new Map<string, { deviceIndex: number; displayMode: string; pixelFormat: string; enableKeying: boolean; audioChannels: number; colorSpace: string }>()
     private static recoveryTimers = new Map<string, ReturnType<typeof setTimeout>>()
     private static recoveryAttempts = new Map<string, number>()
+    private static deviceHandles = new Map<string, string>()
     private static cancelRecovery(id: string) {
         const timer = this.recoveryTimers.get(id)
         if (timer) clearTimeout(timer)
@@ -47,6 +48,16 @@ export class BlackmagicBridge {
             this.recoveryTimers.delete(id)
             const config = this.desiredOutputs.get(id)
             if (!config || this.states.has(id)) return
+            const handle = this.deviceHandles.get(id)
+            if (handle) {
+                const index = BlackmagicManager.getIndexById(handle)
+                if (index < 0) {
+                    console.warn(`[BMD] Waiting for device ${handle} to reconnect for ${id}`)
+                    this.scheduleRecovery(id)
+                    return
+                }
+                config.deviceIndex = index
+            }
             void this.initializeAttempt(id, config).then((ok) => {
                 if (!ok) this.scheduleRecovery(id)
             })
@@ -167,6 +178,9 @@ export class BlackmagicBridge {
 
     static initialize(outputId: string, deviceIndex: number, displayMode: string, pixelFormat: string, enableKeying: boolean, audioChannels = 2, colorSpace = "rec709"): Promise<boolean> {
         const config = { deviceIndex, displayMode, pixelFormat, enableKeying, audioChannels, colorSpace }
+        const deviceHandle = BlackmagicManager.getDevices()[deviceIndex]?.deviceHandle
+        if (deviceHandle) this.deviceHandles.set(outputId, deviceHandle)
+        else this.deviceHandles.delete(outputId)
         this.desiredOutputs.set(outputId, config)
         this.cancelRecovery(outputId)
         return this.initializeAttempt(outputId, config).then((ok) => {
@@ -205,6 +219,7 @@ export class BlackmagicBridge {
 
     static stop(outputId: string) {
         this.desiredOutputs.delete(outputId)
+        this.deviceHandles.delete(outputId)
         this.cancelRecovery(outputId)
         this.settleInit(outputId, false)
         this.states.delete(outputId)
@@ -212,6 +227,7 @@ export class BlackmagicBridge {
         this.worker()?.postMessage({ type: "bmdStop", outputId })
     }
     static stopAll() {
+        this.deviceHandles.clear()
         for (const id of this.desiredOutputs.keys()) this.cancelRecovery(id)
         this.desiredOutputs.clear()
         this.settleAllInit()
@@ -219,6 +235,7 @@ export class BlackmagicBridge {
         this.worker()?.postMessage({ type: "bmdStopAll" })
     }
     static shutdown() {
+        this.deviceHandles.clear()
         for (const id of this.desiredOutputs.keys()) this.cancelRecovery(id)
         this.desiredOutputs.clear()
         this.settleAllInit()
