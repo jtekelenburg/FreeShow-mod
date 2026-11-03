@@ -320,12 +320,12 @@ export interface MainSendPayloads {
 }
 
 export interface MainReturnPayloads {
-    [Main.PROJECTOR_LIST]: { id: string; name: string; host: string; port?: number; groups?: string[] }[]
-    [Main.PROJECTOR_SAVE]: { ok: boolean; error?: string }
-    [Main.PROJECTOR_REMOVE]: { ok: boolean }
-    [Main.PROJECTOR_INPUT]: { id: string; name: string; ok: boolean; value?: string; error?: string }[]
-    [Main.PROJECTOR_DISCOVER]: { host: string; name: string }[]
-    [Main.PROJECTOR_COMMAND]: { id: string; name: string; ok: boolean; value?: string; error?: string }[]
+    [Main.PROJECTOR_LIST]: Promise<{ id: string; name: string; host: string; port?: number; groups?: string[] }[]>
+    [Main.PROJECTOR_SAVE]: Promise<{ ok: boolean; error?: string }>
+    [Main.PROJECTOR_REMOVE]: Promise<{ ok: boolean }>
+    [Main.PROJECTOR_INPUT]: Promise<{ id: string; name: string; ok: boolean; value?: string; error?: string }[]>
+    [Main.PROJECTOR_DISCOVER]: Promise<{ host: string; name: string }[]>
+    [Main.PROJECTOR_COMMAND]: Promise<{ id: string; name: string; ok: boolean; value?: string; error?: string }[]>
     // DEV
     [Main.IS_DEV]: boolean
     [Main.GET_CACHE_PATH]: string
