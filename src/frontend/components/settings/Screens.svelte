@@ -2,7 +2,7 @@
     import { onMount } from "svelte"
     import { OUTPUT } from "../../../types/Channels"
     import { Main } from "../../../types/IPC/Main"
-    import { requestMain } from "../../IPC/main"
+    import { receiveMain, requestMain } from "../../IPC/main"
     import { activePopup, alertMessage, currentOutputSettings, outputs, styles } from "../../stores"
     import { triggerClickOnEnterSpace } from "../../utils/clickable"
     import { send } from "../../utils/request"
@@ -99,10 +99,14 @@
     }
 
     onMount(() => {
-        const interval = setInterval(() => {
-            if (autoDetectOrientation && !detectingOrientation) void detectDisplayOrientation()
-        }, 3000)
-        return () => clearInterval(interval)
+        // Electron monitors display changes even when this settings panel is closed.
+        // Only refresh this panel when automatic updates are enabled.
+        const listenerId = receiveMain(Main.DISPLAYS_CHANGED, (displays) => {
+            if (!autoDetectOrientation) return
+            screens = [...displays].sort(sortScreensByPosition).sort(internalFirst)
+            updateScreenLayout()
+        })
+        return () => window.api.removeListener("MAIN", listenerId)
     })
 
     onMount(async () => {
@@ -324,7 +328,7 @@
                 <option value={180}>180° — Upside down</option>
                 <option value={270}>270° — Counterclockwise</option>
             </select>
-            <label class="detectedOrientation"><input type="checkbox" bind:checked={autoDetectOrientation} /> Automatically monitor display orientation (every 3 seconds)</label>
+            <label class="detectedOrientation"><input type="checkbox" bind:checked={autoDetectOrientation} /> Automatically update when displays change</label>
             <div class="detectedOrientation">
                 <span>Operating system display: <strong>{detectedShape}{detectedAngle === null ? "" : " · " + detectedAngle + "°"}</strong></span>
                 <button type="button" disabled={detectingOrientation} on:click={detectDisplayOrientation}>{detectingOrientation ? "Detecting…" : "Detect orientation"}</button>
