@@ -29,6 +29,29 @@ export class BlackmagicBridge {
     private static audioQueued = 0
     private static pendingInitConfigs = new Map<string, string>()
     private static initGeneration = new Map<string, number>()
+    private static desiredOutputs = new Map<string, { deviceIndex: number; displayMode: string; pixelFormat: string; enableKeying: boolean; audioChannels: number; colorSpace: string }>()
+    private static recoveryTimers = new Map<string, ReturnType<typeof setTimeout>>()
+    private static recoveryAttempts = new Map<string, number>()
+    private static cancelRecovery(id: string) {
+        const timer = this.recoveryTimers.get(id)
+        if (timer) clearTimeout(timer)
+        this.recoveryTimers.delete(id)
+        this.recoveryAttempts.delete(id)
+    }
+    private static scheduleRecovery(id: string) {
+        if (!this.desiredOutputs.has(id) || this.recoveryTimers.has(id) || this.initWaiters.has(id)) return
+        const attempt = this.recoveryAttempts.get(id) || 0
+        this.recoveryAttempts.set(id, attempt + 1)
+        const delay = Math.min(1000 * 2 ** Math.min(attempt, 5), 30000)
+        this.recoveryTimers.set(id, setTimeout(() => {
+            this.recoveryTimers.delete(id)
+            const config = this.desiredOutputs.get(id)
+            if (!config || this.states.has(id)) return
+            void this.initializeAttempt(id, config).then((ok) => {
+                if (!ok) this.scheduleRecovery(id)
+            })
+        }, delay))
+    }
 
     private static worker() {
         this.hook()
@@ -43,6 +66,7 @@ export class BlackmagicBridge {
             this.settleAllInit()
             this.states.clear()
             this.audioQueued = 0
+            for (const id of this.desiredOutputs.keys()) this.scheduleRecovery(id)
         })
         BlackmagicManager.senderControl = { isDeviceStable: (id) => this.isDeviceStable(id), resetProblematicDevice: (id) => this.resetProblematicDevice(id) }
     }
@@ -68,8 +92,13 @@ export class BlackmagicBridge {
                 const was = this.states.get(msg.outputId)
                 // Ignore unsolicited readiness from an output that was stopped or timed out.
                 if (st.ready && !this.initWaiters.has(msg.outputId) && !was?.ready) break
-                if (st.ready) this.states.set(msg.outputId, st)
-                else this.states.delete(msg.outputId)
+                if (st.ready) {
+                    this.states.set(msg.outputId, st)
+                    this.cancelRecovery(msg.outputId)
+                } else {
+                    this.states.delete(msg.outputId)
+                    if (this.desiredOutputs.has(msg.outputId) && !this.initWaiters.has(msg.outputId)) this.scheduleRecovery(msg.outputId)
+                }
                 if (!!was?.ready !== st.ready) console.info(st.ready ? `[BMD] ${msg.outputId} playing out: ${st.displayMode} ${st.pixelFormat} ${st.targetSize.width}x${st.targetSize.height} at ${st.framerate}fps` : `[BMD] ${msg.outputId} has no device playing out (frames for it are dropped)`)
                 if (st.ready) {
                     this.applyFramerate(msg.outputId, st.framerate)
@@ -137,6 +166,16 @@ export class BlackmagicBridge {
     }
 
     static initialize(outputId: string, deviceIndex: number, displayMode: string, pixelFormat: string, enableKeying: boolean, audioChannels = 2, colorSpace = "rec709"): Promise<boolean> {
+        const config = { deviceIndex, displayMode, pixelFormat, enableKeying, audioChannels, colorSpace }
+        this.desiredOutputs.set(outputId, config)
+        this.cancelRecovery(outputId)
+        return this.initializeAttempt(outputId, config).then((ok) => {
+            if (!ok) this.scheduleRecovery(outputId)
+            return ok
+        })
+    }
+
+    private static initializeAttempt(outputId: string, { deviceIndex, displayMode, pixelFormat, enableKeying, audioChannels, colorSpace }: { deviceIndex: number; displayMode: string; pixelFormat: string; enableKeying: boolean; audioChannels: number; colorSpace: string }): Promise<boolean> {
         const worker = this.worker()
         if (!worker) return Promise.resolve(false)
         const config = JSON.stringify([deviceIndex, displayMode, pixelFormat, enableKeying, audioChannels, colorSpace])
@@ -165,17 +204,23 @@ export class BlackmagicBridge {
     }
 
     static stop(outputId: string) {
+        this.desiredOutputs.delete(outputId)
+        this.cancelRecovery(outputId)
         this.settleInit(outputId, false)
         this.states.delete(outputId)
         this.initGeneration.set(outputId, (this.initGeneration.get(outputId) || 0) + 1)
         this.worker()?.postMessage({ type: "bmdStop", outputId })
     }
     static stopAll() {
+        for (const id of this.desiredOutputs.keys()) this.cancelRecovery(id)
+        this.desiredOutputs.clear()
         this.settleAllInit()
         this.states.clear()
         this.worker()?.postMessage({ type: "bmdStopAll" })
     }
     static shutdown() {
+        for (const id of this.desiredOutputs.keys()) this.cancelRecovery(id)
+        this.desiredOutputs.clear()
         this.settleAllInit()
         this.states.clear()
         this.worker()?.postMessage({ type: "bmdShutdown" })
