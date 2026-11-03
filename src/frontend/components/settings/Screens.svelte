@@ -1,3 +1,115 @@
+<script lang="ts">
+    import { onMount } from "svelte"
+    import { OUTPUT } from "../../../types/Channels"
+    import { Main } from "../../../types/IPC/Main"
+    import { requestMain } from "../../IPC/main"
+    import { activePopup, alertMessage, currentOutputSettings, outputs, styles } from "../../stores"
+    import { triggerClickOnEnterSpace } from "../../utils/clickable"
+    import { send } from "../../utils/request"
+    import { clone, keysToID, sortByName } from "../helpers/array"
+    import Icon from "../helpers/Icon.svelte"
+    import { toggleOutputs } from "../helpers/output"
+    import T from "../helpers/T.svelte"
+    import InputRow from "../input/InputRow.svelte"
+    import MaterialButton from "../inputs/MaterialButton.svelte"
+    import MaterialNumberInput from "../inputs/MaterialNumberInput.svelte"
+    import MaterialRadialPicker from "../inputs/MaterialRadialPicker.svelte"
+    import MaterialToggleSwitch from "../inputs/MaterialToggleSwitch.svelte"
+    import Tip from "../main/Tip.svelte"
+
+    export let activateOutput = false
+
+    let options: any[] = []
+    $: options = sortByName(keysToID($outputs))
+    $: if (options.length && (!$currentOutputSettings || !$outputs[$currentOutputSettings])) currentOutputSettings.set(options[0].id)
+
+    type DisplayOrientation = { id: number; rotation?: number; bounds: { width: number; height: number } }
+    let screens: any[] = []
+    let autoDetectOrientation = false
+    let detectingOrientation = false
+    let orientationError = ""
+    $: detectedDisplay = (screens as DisplayOrientation[]).find((display) => display.id.toString() === currentScreen.screen)
+    $: detectedAngle = typeof detectedDisplay?.rotation === "number" ? ((detectedDisplay.rotation % 360) + 360) % 360 : null
+    $: detectedShape = detectedDisplay ? (detectedDisplay.bounds.height > detectedDisplay.bounds.width ? "Portrait" : detectedDisplay.bounds.height < detectedDisplay.bounds.width ? "Landscape" : "Square") : "Unknown"
+
+    async function detectDisplayOrientation() {
+        if (detectingOrientation) return
+        detectingOrientation = true
+        orientationError = ""
+        try {
+            const displays = await requestMain(Main.GET_DISPLAYS)
+            if (!displays) throw new Error("Display information unavailable")
+            screens = displays.sort(sortScreensByPosition).sort(internalFirst)
+            updateScreenLayout()
+        } catch (err) {
+            orientationError = err instanceof Error ? err.message : String(err)
+        } finally {
+            detectingOrientation = false
+        }
+    }
+
+    let screenId: string | null = null
+    $: screenId = $currentOutputSettings
+    let currentScreen: any = {}
+    $: currentScreen = screenId ? $outputs[screenId] || {} : {}
+
+    // find matching screen
+    $: if (!currentScreen.screen && screens.length) {
+        let match = screens.find((screen) => JSON.stringify(screen.bounds) === JSON.stringify(currentScreen.bounds))
+        if (match?.id) {
+            outputs.update((a: any) => {
+                a[screenId!].screen = match.id.toString()
+                return a
+            })
+        }
+    }
+
+    let minPosX: number | null = null
+    let minPosY: number | null = null
+    let totalScreensWidth = 0
+    let totalScreensHeight = 0
+
+    function updateScreenLayout() {
+        // get min/max bounds
+        minPosX = null
+        minPosY = null
+        let maxPosX: null | number = null
+        let maxPosY: null | number = null
+        clone(screens).forEach(({ bounds }) => {
+            if (minPosX === null || bounds.x < minPosX) minPosX = bounds.x
+            if (minPosY === null || bounds.y < minPosY) minPosY = bounds.y
+            if (maxPosX === null || bounds.x + bounds.width > maxPosX) maxPosX = bounds.x + bounds.width
+            if (maxPosY === null || bounds.y + bounds.height > maxPosY) maxPosY = bounds.y + bounds.height
+        })
+
+        totalScreensWidth = maxPosX !== null && minPosX !== null ? (maxPosX - minPosX) / 2 : 0
+        totalScreensHeight = maxPosY !== null && minPosY !== null ? (maxPosY - minPosY) / 2 : 0
+
+        // don't overlap buttons (& allow scroll bars to work)
+        totalScreensWidth = Math.min(totalScreensWidth, 4800)
+        totalScreensHeight = Math.min(totalScreensHeight, 1000)
+
+        // make all values start at 0
+        screens.forEach((a, i) => {
+            screens[i].previewBounds = {
+                x: a.bounds.x - (minPosX || 0),
+                y: a.bounds.y - (minPosY || 0)
+            }
+        })
+    }
+
+    onMount(() => {
+        const interval = setInterval(() => {
+            if (autoDetectOrientation && !detectingOrientation) void detectDisplayOrientation()
+        }, 3000)
+        return () => clearInterval(interval)
+    })
+
+    onMount(async () => {
+        const displays = (await requestMain(Main.GET_DISPLAYS)) || []
+        let sortedScreens = displays.sort(sortScreensByPosition)
+        screens = sortedScreens.sort(internalFirst)
+
         updateScreenLayout()
     })
 
@@ -212,6 +324,7 @@
                 <option value={180}>180° — Upside down</option>
                 <option value={270}>270° — Counterclockwise</option>
             </select>
+            <label class="detectedOrientation"><input type="checkbox" bind:checked={autoDetectOrientation} /> Automatically monitor display orientation (every 3 seconds)</label>
             <div class="detectedOrientation">
                 <span>Operating system display: <strong>{detectedShape}{detectedAngle === null ? "" : " · " + detectedAngle + "°"}</strong></span>
                 <button type="button" disabled={detectingOrientation} on:click={detectDisplayOrientation}>{detectingOrientation ? "Detecting…" : "Detect orientation"}</button>
@@ -391,33 +504,4 @@
         outline: 2px solid var(--secondary);
         outline-offset: 0;
     }
-</style>    function updateScreenLayout() {
-        // get min/max bounds
-        minPosX = null
-        minPosY = null
-        let maxPosX: null | number = null
-        let maxPosY: null | number = null
-        clone(screens).forEach(({ bounds }) => {
-            if (minPosX === null || bounds.x < minPosX) minPosX = bounds.x
-            if (minPosY === null || bounds.y < minPosY) minPosY = bounds.y
-            if (maxPosX === null || bounds.x + bounds.width > maxPosX) maxPosX = bounds.x + bounds.width
-            if (maxPosY === null || bounds.y + bounds.height > maxPosY) maxPosY = bounds.y + bounds.height
-        })
-
-        totalScreensWidth = maxPosX !== null && minPosX !== null ? (maxPosX - minPosX) / 2 : 0
-        totalScreensHeight = maxPosY !== null && minPosY !== null ? (maxPosY - minPosY) / 2 : 0
-
-        // don't overlap buttons (& allow scroll bars to work)
-        totalScreensWidth = Math.min(totalScreensWidth, 4800)
-        totalScreensHeight = Math.min(totalScreensHeight, 1000)
-
-        // make all values start at 0
-        screens.forEach((a, i) => {
-            screens[i].previewBounds = {
-                x: a.bounds.x - (minPosX || 0),
-                y: a.bounds.y - (minPosY || 0)
-            }
-        })
-    }
-
-
+</style>
