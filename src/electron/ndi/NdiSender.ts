@@ -2,6 +2,7 @@ import { toApp } from ".."
 import { CaptureHelper } from "../capture/CaptureHelper"
 import { SenderThread } from "../capture/SenderThread"
 import { recoveryDelay, shouldRecover } from "../capture/RecoveryPolicy"
+import { OutputHealthMonitor } from "../capture/OutputHealth"
 
 // Resources:
 // https://www.npmjs.com/package/grandiose-mac
@@ -25,6 +26,7 @@ export class NdiSender {
         }
     } = {}
 
+    static readonly health = new OutputHealthMonitor()
     private static subscribed = false
     private static desiredSenders = new Map<string, { name: string; groups?: string }>()
     private static recoveryTimer: ReturnType<typeof setTimeout> | null = null
@@ -67,6 +69,7 @@ export class NdiSender {
                         data.previousStatus = undefined
                         toApp("NDI", { channel: "SEND_DATA", data: { id, status: "disconnected", connections: 0 } })
                     }
+                    for (const id of this.desiredSenders.keys()) this.health.update(id, "ndi", { state: "offline", connections: 0 })
                     this.NDI = {}
                     this.scheduleRecovery()
                 }
@@ -99,6 +102,7 @@ export class NdiSender {
             if (!data) return
 
             data.status = msg.status
+            this.health.update(msg.id, "ndi", { state: msg.status === "connected" ? "online" : msg.status === "error" || msg.status === "disconnected" ? "offline" : "starting", connections: Number(msg.connections) || 0 })
             if (msg.status !== "disconnected" && msg.status !== "error") this.recoveryAttempt = 0
             data.connections = msg.connections
             const newStatus = String(msg.status) + String(msg.connections)
@@ -108,11 +112,16 @@ export class NdiSender {
                 data.previousStatus = newStatus
             }
         } else if (msg.type === "createFailed") {
+            if (!this.desiredSenders.has(msg.id)) return
+            this.health.update(msg.id, "ndi", { state: "offline" })
             delete this.NDI[msg.id]
             this.scheduleRecovery()
         } else if (msg.type === "videoDone") {
             const data = this.NDI[msg.id]
-            if (data) data.inFlight = Math.max(0, (data.inFlight ?? 0) - 1)
+            if (data) {
+                data.inFlight = Math.max(0, (data.inFlight ?? 0) - 1)
+                this.health.frame(msg.id, false)
+            }
         }
     }
 
@@ -145,6 +154,7 @@ export class NdiSender {
             this.stopSenderNDI(id)
         }
         this.desiredSenders.set(id, { name, groups })
+        this.health.update(id, "ndi", { state: "starting" })
 
         const worker = this.worker
         if (!worker) {
@@ -164,6 +174,7 @@ export class NdiSender {
 
     static stopSenderNDI(id: string) {
         this.desiredSenders.delete(id)
+        this.health.remove(id)
         if (!this.desiredSenders.size && this.recoveryTimer) {
             clearTimeout(this.recoveryTimer)
             this.recoveryTimer = null
@@ -177,9 +188,13 @@ export class NdiSender {
 
     static sendVideoBufferNDI(id: string, buffer: Buffer, { size = { width: 1280, height: 720 }, ratio = 16 / 9, framerate = 1, transparent = true, format = 0 }: { size?: { width: number; height: number }; ratio?: number; framerate?: number; transparent?: boolean; format?: number } = {}) {
         const data = this.NDI[id]
-        if (!data?.sender || !this.worker) return
+        const worker = this.worker
+        if (!data?.sender || !worker) return
 
-        if (this.isBusyNDI(id)) return
+        if (this.isBusyNDI(id)) {
+            this.health.frame(id, true)
+            return
+        }
         data.inFlight = (data.inFlight ?? 0) + 1
 
         let arrayBuffer: ArrayBuffer
@@ -189,7 +204,7 @@ export class NdiSender {
             arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer
         }
         try {
-            this.worker.postMessage({ type: "video", id, buffer: arrayBuffer, byteOffset: 0, byteLength: arrayBuffer.byteLength, opts: { size, ratio, framerate, transparent, format } }, [arrayBuffer])
+            worker.postMessage({ type: "video", id, buffer: arrayBuffer, byteOffset: 0, byteLength: arrayBuffer.byteLength, opts: { size, ratio, framerate, transparent, format } }, [arrayBuffer])
         } catch (err) {
             data.inFlight = Math.max(0, (data.inFlight ?? 1) - 1)
             console.error(`NDI frame dispatch failed for ${id}:`, err)
