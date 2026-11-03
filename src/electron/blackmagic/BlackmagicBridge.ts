@@ -5,6 +5,7 @@ import { CaptureHelper } from "../capture/CaptureHelper"
 import { SenderCapture } from "../capture/SenderCapture"
 import { OutputHelper } from "../output/OutputHelper"
 import { NdiSender } from "../ndi/NdiSender"
+import { SenderThread } from "../capture/SenderThread"
 import { BlackmagicManager } from "./BlackmagicManager"
 
 // Main-side proxy for Blackmagic output, which runs in the capture worker; device state is mirrored from it.
@@ -26,6 +27,8 @@ export class BlackmagicBridge {
     private static readonly INIT_TIMEOUT_MS = 15000
     private static hooked = false
     private static audioQueued = 0
+    private static pendingInitConfigs = new Map<string, string>()
+    private static initGeneration = new Map<string, number>()
 
     private static worker() {
         this.hook()
@@ -36,6 +39,11 @@ export class BlackmagicBridge {
         if (this.hooked) return
         this.hooked = true
         SenderCapture.bmdMessageHandler = (msg) => this.onWorkerMessage(msg)
+        SenderThread.subscribe(() => {}, () => {
+            this.settleAllInit()
+            this.states.clear()
+            this.audioQueued = 0
+        })
         BlackmagicManager.senderControl = { isDeviceStable: (id) => this.isDeviceStable(id), resetProblematicDevice: (id) => this.resetProblematicDevice(id) }
     }
 
@@ -43,6 +51,7 @@ export class BlackmagicBridge {
         const timer = this.initTimers.get(outputId)
         if (timer) clearTimeout(timer)
         this.initTimers.delete(outputId)
+        this.pendingInitConfigs.delete(outputId)
         const waiters = this.initWaiters.get(outputId) || []
         this.initWaiters.delete(outputId)
         for (const resolve of waiters) resolve(ok)
@@ -57,6 +66,8 @@ export class BlackmagicBridge {
             case "bmdState": {
                 const st: BmdState = { ready: !!msg.ready, displayMode: msg.displayMode || "", pixelFormat: msg.pixelFormat || "", enableKeying: !!msg.enableKeying, colorSpace: msg.colorSpace || "", targetSize: msg.targetSize || { width: 0, height: 0 }, stable: msg.stable !== false, framerate: Number(msg.framerate) || 0 }
                 const was = this.states.get(msg.outputId)
+                // Ignore unsolicited readiness from an output that was stopped or timed out.
+                if (st.ready && !this.initWaiters.has(msg.outputId) && !was?.ready) break
                 if (st.ready) this.states.set(msg.outputId, st)
                 else this.states.delete(msg.outputId)
                 if (!!was?.ready !== st.ready) console.info(st.ready ? `[BMD] ${msg.outputId} playing out: ${st.displayMode} ${st.pixelFormat} ${st.targetSize.width}x${st.targetSize.height} at ${st.framerate}fps` : `[BMD] ${msg.outputId} has no device playing out (frames for it are dropped)`)
@@ -128,16 +139,22 @@ export class BlackmagicBridge {
     static initialize(outputId: string, deviceIndex: number, displayMode: string, pixelFormat: string, enableKeying: boolean, audioChannels = 2, colorSpace = "rec709"): Promise<boolean> {
         const worker = this.worker()
         if (!worker) return Promise.resolve(false)
+        const config = JSON.stringify([deviceIndex, displayMode, pixelFormat, enableKeying, audioChannels, colorSpace])
+        if (this.initWaiters.has(outputId)) {
+            // Do not allow competing initialization requests to resolve against the wrong mode.
+            if (this.pendingInitConfigs.get(outputId) !== config) return Promise.resolve(false)
+            return new Promise((resolve) => this.initWaiters.get(outputId)!.push(resolve))
+        }
+        const generation = (this.initGeneration.get(outputId) || 0) + 1
+        this.initGeneration.set(outputId, generation)
+        this.pendingInitConfigs.set(outputId, config)
         return new Promise((resolve) => {
-            const list = this.initWaiters.get(outputId) || []
-            list.push(resolve)
-            this.initWaiters.set(outputId, list)
-            if (!this.initTimers.has(outputId)) {
-                this.initTimers.set(outputId, setTimeout(() => {
-                    console.warn(`[BMD] Timed out initializing output ${outputId}`)
-                    this.settleInit(outputId, false)
-                }, this.INIT_TIMEOUT_MS))
-            }
+            this.initWaiters.set(outputId, [resolve])
+            this.initTimers.set(outputId, setTimeout(() => {
+                if (this.initGeneration.get(outputId) !== generation) return
+                console.warn(`[BMD] Timed out initializing output ${outputId}`)
+                this.settleInit(outputId, false)
+            }, this.INIT_TIMEOUT_MS))
             try {
                 worker.postMessage({ type: "bmdInit", outputId, deviceIndex, displayMode, pixelFormat, enableKeying, audioChannels, colorSpace })
             } catch (err) {
@@ -150,6 +167,7 @@ export class BlackmagicBridge {
     static stop(outputId: string) {
         this.settleInit(outputId, false)
         this.states.delete(outputId)
+        this.initGeneration.set(outputId, (this.initGeneration.get(outputId) || 0) + 1)
         this.worker()?.postMessage({ type: "bmdStop", outputId })
     }
     static stopAll() {
