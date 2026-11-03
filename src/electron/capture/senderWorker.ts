@@ -1252,11 +1252,12 @@ export function runSenderWorker(adapters: SenderAdapter[]) {
     }, 1000)
 
     // Blackmagic output (BlackmagicBridge on main mirrors its state)
-    const bmdReportState = (outputId: string) => {
+    const bmdRequestIds = new Map<string, number>()
+    const bmdReportState = (outputId: string, requestId?: number) => {
         const d = BlackmagicSender.playbackData[outputId]
         // playout rate from the opened mode ([frame duration, timescale]) when reported
         const rate = Array.isArray(d?.playback?.frameRate) && d.playback.frameRate[0] > 0 ? d.playback.frameRate[1] / d.playback.frameRate[0] : d?.displayMode ? BlackmagicSender.getAccurateFrameRate(d.displayMode) : 0
-        port.postMessage({ type: "bmdState", outputId, ready: !!d?.playback, displayMode: d?.displayMode || "", pixelFormat: d?.pixelFormat || "", enableKeying: !!d?.enableKeying, colorSpace: d?.colorSpace || "", targetSize: d?.targetSize || null, stable: BlackmagicSender.isDeviceStable(outputId), framerate: rate })
+        port.postMessage({ type: "bmdState", outputId, requestId, ready: !!d?.playback, displayMode: d?.displayMode || "", pixelFormat: d?.pixelFormat || "", enableKeying: !!d?.enableKeying, colorSpace: d?.colorSpace || "", targetSize: d?.targetSize || null, stable: BlackmagicSender.isDeviceStable(outputId), framerate: rate })
     }
     setInterval(() => {
         if (Object.keys(BlackmagicSender.playbackData).length) port.postMessage({ type: "bmdAudioQueued", length: BlackmagicSender.audioQueueLength })
@@ -1340,28 +1341,32 @@ export function runSenderWorker(adapters: SenderAdapter[]) {
                 RtmpStreamer.updateFrame(msg.outputId, Buffer.from(msg.buffer, msg.byteOffset, msg.byteLength), msg.size)
                 break
             case "bmdInit": {
+                bmdRequestIds.set(msg.outputId, msg.requestId)
                 // native conversion to the card's YUV modes for frames the GPU did not produce in them
                 const osrMod = loadOsrCapture()
                 if (osrMod && typeof osrMod.convertBgraToCard === "function") BlackmagicSender.nativeCardConvert = (frame, w, h, f, into) => osrMod.convertBgraToCard(frame, w, h, f, into)
                 void BlackmagicSender.initialize(msg.outputId, msg.deviceIndex, msg.displayMode, msg.pixelFormat, msg.enableKeying, msg.audioChannels, msg.colorSpace).then(
-                    () => bmdReportState(msg.outputId),
+                    () => { if (bmdRequestIds.get(msg.outputId) === msg.requestId) bmdReportState(msg.outputId, msg.requestId) },
                     (err) => {
                         console.error("Blackmagic init failed:", err)
-                        bmdReportState(msg.outputId)
+                        if (bmdRequestIds.get(msg.outputId) === msg.requestId) bmdReportState(msg.outputId, msg.requestId)
                     }
                 )
                 break
             }
             case "bmdStop":
+                bmdRequestIds.delete(msg.outputId)
                 bmdForget(msg.outputId)
                 BlackmagicSender.stop(msg.outputId)
                 bmdReportState(msg.outputId)
                 break
             case "bmdStopAll":
+                bmdRequestIds.clear()
                 bmdForget()
                 BlackmagicSender.stopAll()
                 break
             case "bmdShutdown":
+                bmdRequestIds.clear()
                 bmdForget()
                 BlackmagicSender.shutdown()
                 break
