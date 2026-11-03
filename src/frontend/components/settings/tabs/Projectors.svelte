@@ -57,9 +57,9 @@
         finally { busy = false }
     }
 
-    async function run(ids: string[], action: Action) {
+    async function run(ids: string[], action: Action, confirmed = false) {
         if (!ids.length) { error = "Select at least one projector"; return }
-        if (action === "powerOff" && ids.length > 1) { pendingOff = [...ids]; return }
+        if (action === "powerOff" && ids.length > 1 && !confirmed) { pendingOff = [...ids]; return }
         busy = true
         error = ""
         try {
@@ -106,7 +106,7 @@
         <div class="confirm" role="alertdialog" aria-label="Confirm group power off">
             <strong>Power off {pendingOff.length} projectors?</strong>
             <p>This sends a real power-off command to every selected device.</p>
-            <button disabled={busy} on:click={async () => { const ids = pendingOff; pendingOff = []; await run(ids, "powerOff") }}>Confirm power off</button>
+            <button disabled={busy} on:click={async () => { const ids = pendingOff; pendingOff = []; await run(ids, "powerOff", true) }}>Confirm power off</button>
             <button on:click={() => pendingOff = []}>Cancel</button>
         </div>
     {/if}
