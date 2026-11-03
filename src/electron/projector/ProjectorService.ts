@@ -10,6 +10,7 @@ let loaded: Promise<void> | undefined
 let writes: Promise<void> = Promise.resolve()
 const configPath = () => join(app.getPath("userData"), "projectors.json")
 const credentialsPath = () => join(app.getPath("userData"), "projector-credentials.enc.json")
+const secureEncryptionAvailable = () => safeStorage.isEncryptionAvailable() && (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text")
 let credentials: Record<string, string> = {}
 
 async function loadCredentials() {
@@ -17,7 +18,7 @@ async function loadCredentials() {
         const data = JSON.parse(await fs.readFile(credentialsPath(), "utf8")) as Record<string, string>
         credentials = data
     } catch (err) { if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err }
-    if (Object.keys(credentials).length && !safeStorage.isEncryptionAvailable()) throw new Error("Projector credentials require OS encryption support")
+    if (Object.keys(credentials).length && !secureEncryptionAvailable()) throw new Error("Projector credentials require OS encryption support")
     for (const projector of fleet.list()) {
         const encrypted = credentials[projector.id]
         if (encrypted) fleet.upsert({ ...projector, password: safeStorage.decryptString(Buffer.from(encrypted, "base64")) })
@@ -46,7 +47,7 @@ export async function listConfiguredProjectors() {
 export async function saveConfiguredProjector(projector: ProjectorDefinition) {
     try {
         await ensureLoaded()
-        if (projector.password && !safeStorage.isEncryptionAvailable()) throw new Error("OS credential encryption unavailable")
+        if (projector.password && !secureEncryptionAvailable()) throw new Error("OS credential encryption unavailable")
         const existing = fleet.list().find((p) => p.id === projector.id)
         fleet.upsert({ ...projector, password: projector.password || existing?.password })
         await persist()
