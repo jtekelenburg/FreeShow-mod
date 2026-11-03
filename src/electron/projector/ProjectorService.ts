@@ -97,12 +97,26 @@ export async function switchProjectorInputs(ids: string[], code: string) {
     if (!/^[1-5][1-9]$/.test(code)) throw new Error("Invalid PJLink input code")
     const selected = [...new Set(ids)].slice(0, 256)
     const all = new Map(fleet.list().map((p) => [p.id, p]))
-    return Promise.all(selected.map(async (id) => {
-        const projector = all.get(id)
-        if (!projector) return { id, name: id, ok: false as const, error: "Projector not found" }
-        try { return { id, name: projector.name, ok: true as const, value: await ProjectorControl.input(projector, code) } }
-        catch (err) { return { id, name: projector.name, ok: false as const, error: err instanceof Error ? err.message : String(err) } }
-    }))
+    const results = new Array<{ id: string; name: string; ok: boolean; value?: string; error?: string }>(selected.length)
+    let cursor = 0
+    const worker = async () => {
+        while (cursor < selected.length) {
+            const index = cursor++
+            const id = selected[index]
+            const projector = all.get(id)
+            if (!projector) {
+                results[index] = { id, name: id, ok: false, error: "Projector not found" }
+                continue
+            }
+            try {
+                results[index] = { id, name: projector.name, ok: true, value: await ProjectorControl.input(projector, code) }
+            } catch (err) {
+                results[index] = { id, name: projector.name, ok: false, error: err instanceof Error ? err.message : String(err) }
+            }
+        }
+    }
+    await Promise.all(Array.from({ length: Math.min(4, selected.length) }, () => worker()))
+    return results
 }
 
 export async function commandConfiguredProjectors(ids: string[], action: ProjectorAction) {
