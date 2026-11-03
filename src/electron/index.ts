@@ -113,6 +113,22 @@ protocol.registerSchemesAsPrivileged([
 // start when ready
 if (RECORD_STARTUP_TIME) console.time("Full startup")
 app.on("ready", async () => {
+    // Broadcast native topology changes, including rotation, bounds and hot-plug events.
+    // Defer to the next tick so Electron has applied the updated display geometry.
+    let displayChangeTimer: ReturnType<typeof setTimeout> | undefined
+    const notifyDisplaysChanged = () => {
+        if (displayChangeTimer) clearTimeout(displayChangeTimer)
+        displayChangeTimer = setTimeout(() => sendMain(Main.DISPLAYS_CHANGED, screen.getAllDisplays()), 150)
+    }
+    screen.on("display-added", notifyDisplaysChanged)
+    screen.on("display-removed", notifyDisplaysChanged)
+    screen.on("display-metrics-changed", notifyDisplaysChanged)
+    app.once("before-quit", () => {
+        if (displayChangeTimer) clearTimeout(displayChangeTimer)
+        screen.removeListener("display-added", notifyDisplaysChanged)
+        screen.removeListener("display-removed", notifyDisplaysChanged)
+        screen.removeListener("display-metrics-changed", notifyDisplaysChanged)
+    })
     // getGPUFeatureStatus() at app-ready is premature (GPU process still initializing, reports
     // disabled_software defaults) — only the delayed re-logs reflect the real state
     logGpuStatus("start")
