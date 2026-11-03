@@ -200,6 +200,9 @@ export enum Main {
 }
 
 export interface MainSendPayloads {
+    [Main.PROJECTOR_SAVE]: { id: string; name: string; host: string; port?: number; groups?: string[] }
+    [Main.PROJECTOR_REMOVE]: { id: string }
+    [Main.PROJECTOR_COMMAND]: { ids: string[]; action: "powerOn" | "powerOff" | "powerState" | "muteVideo" | "unmuteVideo" }
     // DEV
     [Main.LOG]: any
     /////
@@ -313,6 +316,10 @@ export interface MainSendPayloads {
 }
 
 export interface MainReturnPayloads {
+    [Main.PROJECTOR_LIST]: { id: string; name: string; host: string; port?: number; groups?: string[] }[]
+    [Main.PROJECTOR_SAVE]: { ok: boolean; error?: string }
+    [Main.PROJECTOR_REMOVE]: { ok: boolean }
+    [Main.PROJECTOR_COMMAND]: { id: string; name: string; ok: boolean; value?: string; error?: string }[]
     // DEV
     [Main.IS_DEV]: boolean
     [Main.GET_CACHE_PATH]: string
