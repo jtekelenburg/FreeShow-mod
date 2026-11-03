@@ -1,6 +1,7 @@
 import { toApp } from ".."
 import { CaptureHelper } from "../capture/CaptureHelper"
 import { SenderThread } from "../capture/SenderThread"
+import { recoveryDelay, shouldRecover } from "../capture/RecoveryPolicy"
 
 // Resources:
 // https://www.npmjs.com/package/grandiose-mac
@@ -32,7 +33,7 @@ export class NdiSender {
 
     private static scheduleRecovery() {
         if (this.recoveryTimer || !this.desiredSenders.size) return
-        const delay = Math.min(1000 * Math.pow(2, Math.min(this.recoveryAttempt++, 5)), this.MAX_RECOVERY_DELAY_MS)
+        const delay = recoveryDelay(this.recoveryAttempt++, 1000, this.MAX_RECOVERY_DELAY_MS)
         this.recoveryTimer = setTimeout(() => {
             this.recoveryTimer = null
             const worker = this.worker
@@ -41,7 +42,7 @@ export class NdiSender {
                 return
             }
             for (const [id, config] of this.desiredSenders) {
-                if (this.NDI[id]?.sender) continue
+                if (!shouldRecover(this.desiredSenders.has(id), !!this.NDI[id]?.sender, false)) continue
                 this.NDI[id] = { ...config, sender: true, status: "reconnecting", inFlight: 0 }
                 try {
                     worker.postMessage({ type: "create", protocol: "ndi", id, ...config })
