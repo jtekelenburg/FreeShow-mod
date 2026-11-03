@@ -19,6 +19,9 @@
     let name = ""
     let host = ""
     let group = "Sanctuary"
+    let password = ""
+    let autoRefresh = false
+    let pollTimer: ReturnType<typeof setInterval> | undefined
     let inputCodes: Record<string, string> = {}
     let pendingOff: string[] = []
 
@@ -32,16 +35,27 @@
         else error = "Unable to load projector configuration"
     }
 
-    onMount(() => { void refresh() })
+    onMount(() => {
+        void refresh()
+        return () => { if (pollTimer) clearInterval(pollTimer) }
+    })
+
+    function togglePolling() {
+        autoRefresh = !autoRefresh
+        if (pollTimer) clearInterval(pollTimer)
+        if (autoRefresh) pollTimer = setInterval(() => {
+            if (!busy && projectors.length) void run(projectors.map((p) => p.id), "powerState")
+        }, 30000)
+    }
 
     async function add() {
         if (!name.trim() || !host.trim()) return
         busy = true
         error = ""
         try {
-            const result = await requestMain(Main.PROJECTOR_SAVE, { id: crypto.randomUUID(), name: name.trim(), host: host.trim(), groups: group.trim() ? [group.trim()] : [] })
+            const result = await requestMain(Main.PROJECTOR_SAVE, { id: crypto.randomUUID(), name: name.trim(), host: host.trim(), groups: group.trim() ? [group.trim()] : [], ...(password ? { password } : {}) })
             if (!result?.ok) error = result?.error || "Unable to save projector"
-            else { name = ""; host = ""; await refresh(); view = "control" }
+            else { name = ""; host = ""; password = ""; await refresh(); view = "control" }
         } catch (err) { error = String(err) }
         finally { busy = false }
     }
@@ -125,6 +139,7 @@
     {/if}
 
     {#if view === "control"}
+        <label class="poll"><input type="checkbox" checked={autoRefresh} on:change={togglePolling} /> Poll projector status every 30 seconds</label>
         <div class="filters">
             <input aria-label="Search projectors" placeholder="Search name or IP address" bind:value={search} />
             <select aria-label="Filter group" bind:value={groupFilter}>
@@ -189,9 +204,10 @@
             <label>Name <input bind:value={name} placeholder="Main Center" required /></label>
             <label>IP address or hostname <input bind:value={host} placeholder="192.0.2.105" required /></label>
             <label>Group <input bind:value={group} placeholder="Sanctuary" /></label>
+            <label>PJLink password (optional) <input type="password" autocomplete="new-password" bind:value={password} /></label>
             <button type="submit" disabled={busy}>Add projector</button>
         </form>
-        <p class="hint">Uses PJLink TCP port 4352. Password-protected projectors require additional credential setup.</p>
+        <p class="hint">Uses PJLink TCP port 4352. Passwords are encrypted using the operating system credential encryption API.</p>
     {/if}
     {#if results.length}
         <div class="results"><h4>Last command results</h4>
