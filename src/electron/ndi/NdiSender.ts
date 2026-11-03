@@ -30,7 +30,16 @@ export class NdiSender {
             this.subscribed = true
             SenderThread.subscribe(
                 (msg) => this.onWorkerMessage(msg),
-                () => (this.NDI = {})
+                () => {
+                    // Release outstanding send counters and notify the UI when the shared worker dies.
+                    for (const [id, data] of Object.entries(this.NDI)) {
+                        data.inFlight = 0
+                        data.status = "disconnected"
+                        data.previousStatus = undefined
+                        toApp("NDI", { channel: "SEND_DATA", data: { id, status: "disconnected", connections: 0 } })
+                    }
+                    this.NDI = {}
+                }
             )
         }
         return SenderThread.get()
@@ -120,6 +129,7 @@ export class NdiSender {
         const data = this.NDI[id]
         if (!data?.sender || !this.worker) return
 
+        if (this.isBusyNDI(id)) return
         data.inFlight = (data.inFlight ?? 0) + 1
 
         let arrayBuffer: ArrayBuffer
@@ -128,7 +138,12 @@ export class NdiSender {
         } else {
             arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer
         }
-        this.worker.postMessage({ type: "video", id, buffer: arrayBuffer, byteOffset: 0, byteLength: arrayBuffer.byteLength, opts: { size, ratio, framerate, transparent, format } }, [arrayBuffer])
+        try {
+            this.worker.postMessage({ type: "video", id, buffer: arrayBuffer, byteOffset: 0, byteLength: arrayBuffer.byteLength, opts: { size, ratio, framerate, transparent, format } }, [arrayBuffer])
+        } catch (err) {
+            data.inFlight = Math.max(0, (data.inFlight ?? 1) - 1)
+            console.error(`NDI frame dispatch failed for ${id}:`, err)
+        }
     }
 
     // FS_CAP_STATS: main-thread load; lag = lateness of a 5ms timer, paint/msg = sync ms per second
