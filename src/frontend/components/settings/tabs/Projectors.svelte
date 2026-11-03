@@ -10,6 +10,7 @@
     let projectors: Projector[] = []
     let results: Result[] = []
     let powerResults: Result[] = []
+    let lastPowerCheck = 0
     let selected = new Set<string>()
     let expanded = ""
     let search = ""
@@ -92,7 +93,7 @@
             if (!response) error = "Projector command timed out"
             else {
                 results = [...response, ...results.filter((r) => !ids.includes(r.id))]
-                if (action === "powerState") powerResults = [...response, ...powerResults.filter((r) => !ids.includes(r.id))]
+                if (action === "powerState") { powerResults = [...response, ...powerResults.filter((r) => !ids.includes(r.id))]; lastPowerCheck = Date.now() }
                 else if (action === "powerOn" || action === "powerOff") powerResults = powerResults.filter((r) => !ids.includes(r.id))
             }
         } catch (err) { error = String(err) }
@@ -135,7 +136,7 @@
     <div class="summary">
         <div><strong>{projectors.length}</strong><span>Configured</span></div>
         <div><strong>{groups.length}</strong><span>Groups</span></div>
-        <div><strong>{onCount}</strong><span>Last reported on</span></div>
+        <div><strong>{onCount}</strong><span>Last reported on{lastPowerCheck ? " · " + new Date(lastPowerCheck).toLocaleTimeString() : ""}</span></div>
     </div>
     <nav aria-label="Projector manager sections">
         <button class:active={view === "control"} on:click={() => view = "control"}>Control</button>
@@ -181,6 +182,8 @@
                             <button disabled={busy} on:click={() => run([p.id], "powerState")}>Check status</button>
                             <button disabled={busy} on:click={() => run([p.id], "muteVideo")}>Blank</button>
                             <button disabled={busy} on:click={() => run([p.id], "unmuteVideo")}>Unblank</button>
+                            <button disabled={busy} on:click={() => run([p.id], "muteAudio")}>Mute audio</button>
+                            <button disabled={busy} on:click={() => run([p.id], "unmuteAudio")}>Unmute audio</button>
                         </div>
                         <label>Input code (PJLink, e.g. 31 for HDMI 1)
                             <input placeholder="31" maxlength="2" value={inputCodes[p.id] ?? ""} on:input={(e) => inputCodes = { ...inputCodes, [p.id]: e.currentTarget.value }} />
