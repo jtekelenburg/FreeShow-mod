@@ -1,31 +1,57 @@
-name: Build
+name: Cross-platform build
+
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [feature/media-reliability]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
+    name: ${{ matrix.os }} / Node 22
     runs-on: ${{ matrix.os }}
-
+    timeout-minutes: 45
     strategy:
+      fail-fast: false
       matrix:
-        os:
-          [
-            windows-latest,
-            macos-latest,
-            ubuntu-latest
-          ]
+        os: [ubuntu-24.04, windows-latest, macos-latest]
 
     steps:
-      - name: Check out Git repository
-        uses: actions/checkout@v5
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-      - name: Install Node.js and NPM
-        uses: actions/setup-node@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '22'
+          cache: npm
+
+      - name: Install Linux native build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential python3 pkg-config \
+            libfontconfig1-dev uuid-dev libltc-dev \
+            libasound2-dev libudev-dev libnss3 libatk-bridge2.0-0 \
+            libgtk-3-0 libgbm1 libxss1
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Build app
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Type-check Electron
+        run: npm run build:electron:dev
+
+      - name: Build application
         run: npm run build
