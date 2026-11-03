@@ -1253,6 +1253,13 @@ export function runSenderWorker(adapters: SenderAdapter[]) {
 
     // Blackmagic output (BlackmagicBridge on main mirrors its state)
     const bmdRequestIds = new Map<string, number>()
+    const bmdOperations = new Map<string, Promise<void>>()
+    const queueBmd = (id: string, operation: () => Promise<void> | void) => {
+        const previous = bmdOperations.get(id) || Promise.resolve()
+        const next = previous.catch(() => {}).then(operation).catch((err) => console.error(`[BMD] Operation failed for ${id}:`, err))
+        bmdOperations.set(id, next)
+        void next.finally(() => { if (bmdOperations.get(id) === next) bmdOperations.delete(id) })
+    }
     const bmdReportState = (outputId: string, requestId?: number) => {
         const d = BlackmagicSender.playbackData[outputId]
         // playout rate from the opened mode ([frame duration, timescale]) when reported
@@ -1345,28 +1352,34 @@ export function runSenderWorker(adapters: SenderAdapter[]) {
                 // native conversion to the card's YUV modes for frames the GPU did not produce in them
                 const osrMod = loadOsrCapture()
                 if (osrMod && typeof osrMod.convertBgraToCard === "function") BlackmagicSender.nativeCardConvert = (frame, w, h, f, into) => osrMod.convertBgraToCard(frame, w, h, f, into)
-                void BlackmagicSender.initialize(msg.outputId, msg.deviceIndex, msg.displayMode, msg.pixelFormat, msg.enableKeying, msg.audioChannels, msg.colorSpace).then(
-                    () => { if (bmdRequestIds.get(msg.outputId) === msg.requestId) bmdReportState(msg.outputId, msg.requestId) },
-                    (err) => {
+                queueBmd(msg.outputId, async () => {
+                    if (bmdRequestIds.get(msg.outputId) !== msg.requestId) return
+                    try {
+                        await BlackmagicSender.initialize(msg.outputId, msg.deviceIndex, msg.displayMode, msg.pixelFormat, msg.enableKeying, msg.audioChannels, msg.colorSpace)
+                    } catch (err) {
                         console.error("Blackmagic init failed:", err)
-                        if (bmdRequestIds.get(msg.outputId) === msg.requestId) bmdReportState(msg.outputId, msg.requestId)
                     }
-                )
+                    if (bmdRequestIds.get(msg.outputId) === msg.requestId) bmdReportState(msg.outputId, msg.requestId)
+                })
                 break
             }
             case "bmdStop":
                 bmdRequestIds.delete(msg.outputId)
-                bmdForget(msg.outputId)
-                BlackmagicSender.stop(msg.outputId)
-                bmdReportState(msg.outputId)
+                queueBmd(msg.outputId, () => {
+                    bmdForget(msg.outputId)
+                    BlackmagicSender.stop(msg.outputId)
+                    bmdReportState(msg.outputId)
+                })
                 break
             case "bmdStopAll":
                 bmdRequestIds.clear()
+                for (const id of bmdOperations.keys()) queueBmd(id, () => { bmdForget(id); BlackmagicSender.stop(id) })
                 bmdForget()
                 BlackmagicSender.stopAll()
                 break
             case "bmdShutdown":
                 bmdRequestIds.clear()
+                for (const id of bmdOperations.keys()) queueBmd(id, () => { bmdForget(id); BlackmagicSender.stop(id) })
                 bmdForget()
                 BlackmagicSender.shutdown()
                 break
