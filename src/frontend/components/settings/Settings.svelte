@@ -48,7 +48,7 @@
 
 <main>
     <div class="title" style={scrolled ? "box-shadow: 2px 2px 4px 5px rgb(0 0 0 / 0.1);" : ""}>
-        <h2>{translateText(`settings.${tabId}`, $dictionary)}</h2>
+        <h2>{tabId === "projectors" ? "Projectors" : translateText(`settings.${tabId}`, $dictionary)}</h2>
 
         <div style="display: flex;align-items: center;gap: 8px;">
             {#if hints[tabId]}
