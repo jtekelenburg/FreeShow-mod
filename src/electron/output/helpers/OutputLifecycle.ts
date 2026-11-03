@@ -81,7 +81,12 @@ export class OutputLifecycle {
                 return
             }
 
-            const targetBounds = OutputVisibility.resolveOutputBounds({ ...output, bounds: output.intendedBounds, id })
+            // Keep assigned outputs on their original display, even after hot-plug.
+            const assignedDisplay = output.screen ? screen.getAllDisplays().find((display) => display.id.toString() === output.screen) : undefined
+            if (output.screen && !assignedDisplay) return
+            const targetBounds = assignedDisplay && !output.boundsLocked
+                ? assignedDisplay.bounds
+                : OutputVisibility.resolveOutputBounds({ ...output, bounds: output.intendedBounds, id })
             const currentBounds = output.window.getBounds()
             if (JSON.stringify(currentBounds) !== JSON.stringify(targetBounds)) {
                 OutputHelper.Bounds.updateBounds({ id, bounds: targetBounds })
