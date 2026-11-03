@@ -86,6 +86,8 @@
             <AudioRouting />
         {:else if tabId === "connection"}
             <Connection />
+        {:else if tabId === "projectors"}
+            <Projectors />
         {:else if tabId === "files"}
             <Files />
         {:else if tabId === "profiles"}
