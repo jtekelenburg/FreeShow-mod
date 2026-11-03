@@ -82,6 +82,14 @@ export class OutputVisibility {
         // never auto position locked bounds
         if (output.boundsLocked) return outputBounds
 
+        // A user-assigned display takes priority over stale screen coordinates.
+        // If disconnected, preserve configured geometry rather than switching monitors.
+        if (output.screen) {
+            const assigned = displays.find((display) => display.id.toString() === output.screen)
+            if (assigned) return { ...assigned.bounds }
+            return outputBounds
+        }
+
         // 1. Primary: Preserve valid coordinates if already within an active physical display
         if (displays.length > 0 && hasValidBounds && output.bounds) {
             const isCenterOnDisplay = displays.some((d) => {
