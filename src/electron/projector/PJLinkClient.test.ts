@@ -51,6 +51,20 @@ describe("PJLink TCP integration", () => {
         await expect(sendPJLink({ host: "127.0.0.1", port: securedPort }, "POWR")).rejects.toThrow("password required")
     })
 
+    it("rejects malformed PJLink greetings", async () => {
+        const port = await mockProjector("INVALID GREETING", () => "%1POWR=1")
+        await expect(sendPJLink({ host: "127.0.0.1", port }, "POWR")).rejects.toThrow("Invalid PJLink greeting")
+    })
+
+    it("times out when a projector never sends its greeting", async () => {
+        const server = createServer(() => {})
+        servers.push(server)
+        await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+        const address = server.address()
+        if (!address || typeof address === "string") throw new Error("No test port")
+        await expect(sendPJLink({ host: "127.0.0.1", port: address.port, timeoutMs: 80 }, "POWR")).rejects.toThrow("PJLink timeout")
+    })
+
     it("rejects invalid addresses and ports before opening a socket", async () => {
         await expect(sendPJLink({ host: "", port: 4352 }, "POWR")).rejects.toThrow("Invalid projector address")
         await expect(sendPJLink({ host: "localhost", port: 0 }, "POWR")).rejects.toThrow("Invalid projector address")
