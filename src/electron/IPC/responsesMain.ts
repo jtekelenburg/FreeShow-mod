@@ -27,7 +27,7 @@ import { save } from "../data/save"
 import { _store, appDataPath, config, createStores, getStore, getStoreValue, setStoreValue } from "../data/store"
 import { captureSlide, doesMediaExist, getThumbnail, getThumbnailFolderPath, pdfToImage, saveImage } from "../data/thumbnails"
 import { OutputHelper } from "../output/OutputHelper"
-import { listConfiguredProjectors, saveConfiguredProjector, removeConfiguredProjector, commandConfiguredProjectors } from "../projector/ProjectorService"
+import { listConfiguredProjectors, saveConfiguredProjector, removeConfiguredProjector, commandConfiguredProjectors, switchProjectorInputs } from "../projector/ProjectorService"
 import { pptToPdf } from "../output/ppt/pptToPdf"
 import { getPresentationApplications, presentationControl, startSlideshow } from "../output/ppt/presentation"
 import { closeServers, startServers, updateServerData } from "../servers"
@@ -53,6 +53,7 @@ export const mainResponses: MainResponses = {
     [Main.PROJECTOR_SAVE]: (data) => saveConfiguredProjector(data),
     [Main.PROJECTOR_REMOVE]: (data) => removeConfiguredProjector(data.id),
     [Main.PROJECTOR_COMMAND]: (data) => commandConfiguredProjectors(data.ids, data.action),
+    [Main.PROJECTOR_INPUT]: (data) => switchProjectorInputs(data.ids, data.code),
     // DEV
     [Main.LOG]: (data) => console.info(data),
     [Main.IS_DEV]: () => !isProd,
