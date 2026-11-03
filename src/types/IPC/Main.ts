@@ -95,6 +95,7 @@ export enum Main {
     GET_SCREENS = "GET_SCREENS",
     GET_WINDOWS = "GET_WINDOWS",
     GET_DISPLAYS = "GET_DISPLAYS",
+    DISPLAYS_CHANGED = "DISPLAYS_CHANGED",
     GET_GRAPHICS_DEVICES = "GET_GRAPHICS_DEVICES",
     OUTPUT = "OUTPUT",
     DOES_MEDIA_EXIST = "DOES_MEDIA_EXIST",
@@ -361,6 +362,7 @@ export interface MainReturnPayloads {
     [Main.SHOW]: { id: string; error?: string; content?: [string, Show] }
     ///
     [Main.GET_DISPLAYS]: Display[]
+    [Main.DISPLAYS_CHANGED]: Display[]
     [Main.GET_PATHS]: MainFilePaths
     [Main.DATA_PATH]: string
     [Main.GET_STORE_VALUE]: any
