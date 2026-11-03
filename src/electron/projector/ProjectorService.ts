@@ -71,7 +71,7 @@ export async function removeConfiguredProjector(id: string) {
 
 /** Probe up to 32 hosts in one IPv4 /24 using PJLink NAME. */
 export async function discoverProjectors(prefix: string, start = 1, count = 16) {
-    if (!/^(?:\\d{1,3}\\.){3}$/.test(prefix) || prefix.slice(0, -1).split(".").some((v) => Number(v) > 255)) throw new Error("Invalid IPv4 prefix")
+    if (!/^(?:\d{1,3}\.){3}$/.test(prefix) || prefix.slice(0, -1).split(".").some((v) => Number(v) > 255)) throw new Error("Invalid IPv4 prefix")
     if (!Number.isInteger(start) || start < 1 || !Number.isInteger(count) || count < 1 || count > 32 || start + count > 255) throw new Error("Invalid discovery range")
     const found: { host: string; name: string }[] = []
     const hosts = Array.from({ length: count }, (_, i) => prefix + (start + i))
