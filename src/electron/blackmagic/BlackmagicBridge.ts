@@ -8,6 +8,7 @@ import { NdiSender } from "../ndi/NdiSender"
 import { SenderThread } from "../capture/SenderThread"
 import { BlackmagicManager } from "./BlackmagicManager"
 import { resolveRecoveryDeviceIndex } from "./DeviceRecovery"
+import { recoveryDelay, shouldRecover } from "../capture/RecoveryPolicy"
 
 // Main-side proxy for Blackmagic output, which runs in the capture worker; device state is mirrored from it.
 export type BmdState = {
@@ -41,10 +42,10 @@ export class BlackmagicBridge {
         this.recoveryAttempts.delete(id)
     }
     private static scheduleRecovery(id: string) {
-        if (!this.desiredOutputs.has(id) || this.recoveryTimers.has(id) || this.initWaiters.has(id)) return
+        if (!shouldRecover(this.desiredOutputs.has(id), this.states.has(id), this.initWaiters.has(id)) || this.recoveryTimers.has(id)) return
         const attempt = this.recoveryAttempts.get(id) || 0
         this.recoveryAttempts.set(id, attempt + 1)
-        const delay = Math.min(1000 * 2 ** Math.min(attempt, 5), 30000)
+        const delay = recoveryDelay(attempt)
         this.recoveryTimers.set(id, setTimeout(() => {
             this.recoveryTimers.delete(id)
             const config = this.desiredOutputs.get(id)
