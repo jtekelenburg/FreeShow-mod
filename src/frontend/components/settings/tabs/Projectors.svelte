@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from "svelte"
-    import { Main } from "../../../types/IPC/Main"
-    import { requestMain } from "../../IPC/main"
+    import { Main } from "../../../../types/IPC/Main"
+    import { requestMain } from "../../../IPC/main"
 
     type Projector = { id: string; name: string; host: string; port?: number; groups?: string[] }
     type Action = "powerOn" | "powerOff" | "powerState" | "muteVideo" | "unmuteVideo" | "muteAudio" | "unmuteAudio"
