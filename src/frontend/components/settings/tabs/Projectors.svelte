@@ -20,6 +20,8 @@
     let host = ""
     let group = "Sanctuary"
     let password = ""
+    let discoveryPrefix = "192.168.1."
+    let discovered: { host: string; name: string }[] = []
     let autoRefresh = false
     let pollTimer: ReturnType<typeof setInterval> | undefined
     let inputCodes: Record<string, string> = {}
@@ -46,6 +48,14 @@
         if (autoRefresh) pollTimer = setInterval(() => {
             if (!busy && projectors.length) void run(projectors.map((p) => p.id), "powerState")
         }, 30000)
+    }
+
+    async function discover() {
+        busy = true
+        error = ""
+        try { discovered = (await requestMain(Main.PROJECTOR_DISCOVER, { prefix: discoveryPrefix, start: 1, count: 32 })) ?? [] }
+        catch (err) { error = String(err) }
+        finally { busy = false }
     }
 
     async function add() {
@@ -199,6 +209,13 @@
             </article>
         {/each}
     {:else}
+        <h4>Discover projectors</h4>
+        <p class="hint">Scan the first 32 addresses in an IPv4 subnet. PJLink must be enabled on the projector.</p>
+        <label>IPv4 subnet prefix <input bind:value={discoveryPrefix} placeholder="192.168.1." /></label>
+        <button disabled={busy} on:click={discover}>Scan subnet</button>
+        {#each discovered as found (found.host)}
+            <div class="device-heading"><span>{found.name} · {found.host}</span><button on:click={() => { name = found.name; host = found.host }}>Use address</button></div>
+        {/each}
         <h4>Add PJLink projector</h4>
         <form class="add" on:submit|preventDefault={add}>
             <label>Name <input bind:value={name} placeholder="Main Center" required /></label>
