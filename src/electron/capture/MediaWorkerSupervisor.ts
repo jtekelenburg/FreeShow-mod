@@ -59,6 +59,7 @@ export class MediaWorkerSupervisor {
 
     healthy() {
         if (this.stopped || this.state !== "running") return
+        if (this.failures === 0) return
         this.failures = 0
         this.publish()
     }
