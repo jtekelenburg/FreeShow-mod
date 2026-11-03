@@ -188,8 +188,13 @@ export class NdiSender {
 
     static sendVideoBufferNDI(id: string, buffer: Buffer, { size = { width: 1280, height: 720 }, ratio = 16 / 9, framerate = 1, transparent = true, format = 0 }: { size?: { width: number; height: number }; ratio?: number; framerate?: number; transparent?: boolean; format?: number } = {}) {
         const data = this.NDI[id]
+        if (!data?.sender) return
         const worker = this.worker
-        if (!data?.sender || !worker) return
+        if (!worker) {
+            this.health.update(id, "ndi", { state: "offline" })
+            this.health.frame(id, true)
+            return
+        }
 
         if (this.isBusyNDI(id)) {
             this.health.frame(id, true)
@@ -207,6 +212,7 @@ export class NdiSender {
             worker.postMessage({ type: "video", id, buffer: arrayBuffer, byteOffset: 0, byteLength: arrayBuffer.byteLength, opts: { size, ratio, framerate, transparent, format } }, [arrayBuffer])
         } catch (err) {
             data.inFlight = Math.max(0, (data.inFlight ?? 1) - 1)
+            this.health.frame(id, true)
             console.error(`NDI frame dispatch failed for ${id}:`, err)
         }
     }
@@ -236,15 +242,19 @@ export class NdiSender {
     }
 
     static async sendAudioBufferNDITarget(id: string, buffer: Buffer, { sampleRate, channelCount }: { sampleRate: number; channelCount: number }) {
-        if (!this.NDI[id]?.sender || !this.worker || !buffer || buffer.length === 0) return
+        if (!this.NDI[id]?.sender || !buffer || buffer.length === 0) return
+        const worker = this.worker
+        if (!worker) return
 
-        this.worker.postMessage({ type: "audioTarget", id, buffer: buffer.buffer, byteOffset: buffer.byteOffset, byteLength: buffer.byteLength, opts: { sampleRate, channelCount } })
+        worker.postMessage({ type: "audioTarget", id, buffer: buffer.buffer, byteOffset: buffer.byteOffset, byteLength: buffer.byteLength, opts: { sampleRate, channelCount } })
     }
 
     static async sendAudioBufferNDI(buffer: Buffer, { sampleRate, channelCount }: { sampleRate: number; channelCount: number }) {
         const hasSender = Object.values(this.NDI).some((s) => s?.sender)
-        if (!hasSender || !this.worker || !buffer || buffer.length === 0) return
+        if (!hasSender || !buffer || buffer.length === 0) return
+        const worker = this.worker
+        if (!worker) return
 
-        this.worker.postMessage({ type: "audio", buffer: buffer.buffer, byteOffset: buffer.byteOffset, byteLength: buffer.byteLength, opts: { sampleRate, channelCount } })
+        worker.postMessage({ type: "audio", buffer: buffer.buffer, byteOffset: buffer.byteOffset, byteLength: buffer.byteLength, opts: { sampleRate, channelCount } })
     }
 }
