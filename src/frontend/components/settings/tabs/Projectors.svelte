@@ -9,6 +9,7 @@
 
     let projectors: Projector[] = []
     let results: Result[] = []
+    let powerResults: Result[] = []
     let selected = new Set<string>()
     let expanded = ""
     let search = ""
@@ -29,7 +30,7 @@
 
     $: groups = [...new Set(projectors.flatMap((p) => p.groups ?? []))].sort()
     $: filtered = projectors.filter((p) => (!groupFilter || p.groups?.includes(groupFilter)) && (p.name + " " + p.host).toLowerCase().includes(search.toLowerCase()))
-    $: onCount = results.filter((r) => r.ok && r.value === "on").length
+    $: onCount = powerResults.filter((r) => r.ok && r.value === "on").length
 
     async function refresh() {
         const response = await requestMain(Main.PROJECTOR_LIST)
@@ -89,7 +90,11 @@
         try {
             const response = await requestMain(Main.PROJECTOR_COMMAND, { ids, action })
             if (!response) error = "Projector command timed out"
-            else results = [...response, ...results.filter((r) => !ids.includes(r.id))]
+            else {
+                results = [...response, ...results.filter((r) => !ids.includes(r.id))]
+                if (action === "powerState") powerResults = [...response, ...powerResults.filter((r) => !ids.includes(r.id))]
+                else if (action === "powerOn" || action === "powerOff") powerResults = powerResults.filter((r) => !ids.includes(r.id))
+            }
         } catch (err) { error = String(err) }
         finally { busy = false }
     }
@@ -115,7 +120,7 @@
     }
 
     function status(id: string) {
-        const result = results.find((r) => r.id === id)
+        const result = powerResults.find((r) => r.id === id) ?? results.find((r) => r.id === id)
         if (!result) return "Unknown"
         if (!result.ok) return "Error"
         return result.value === "on" ? "On" : result.value === "off" ? "Off" : result.value === "warming" ? "Warming" : result.value === "cooling" ? "Cooling" : "Command sent"
