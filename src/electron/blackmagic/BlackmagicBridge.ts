@@ -7,6 +7,7 @@ import { OutputHelper } from "../output/OutputHelper"
 import { NdiSender } from "../ndi/NdiSender"
 import { SenderThread } from "../capture/SenderThread"
 import { BlackmagicManager } from "./BlackmagicManager"
+import { resolveRecoveryDeviceIndex } from "./DeviceRecovery"
 
 // Main-side proxy for Blackmagic output, which runs in the capture worker; device state is mirrored from it.
 export type BmdState = {
@@ -49,15 +50,13 @@ export class BlackmagicBridge {
             const config = this.desiredOutputs.get(id)
             if (!config || this.states.has(id)) return
             const handle = this.deviceHandles.get(id)
-            if (handle) {
-                const index = BlackmagicManager.getIndexById(handle)
-                if (index < 0) {
-                    console.warn(`[BMD] Waiting for device ${handle} to reconnect for ${id}`)
-                    this.scheduleRecovery(id)
-                    return
-                }
-                config.deviceIndex = index
+            const index = resolveRecoveryDeviceIndex(handle, config.deviceIndex, BlackmagicManager.getDevices())
+            if (index < 0) {
+                console.warn(`[BMD] Waiting for configured device ${handle ?? config.deviceIndex} to reconnect for ${id}`)
+                this.scheduleRecovery(id)
+                return
             }
+            config.deviceIndex = index
             void this.initializeAttempt(id, config).then((ok) => {
                 if (!ok) this.scheduleRecovery(id)
             })
