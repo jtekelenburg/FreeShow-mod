@@ -31,6 +31,7 @@ export class BlackmagicBridge {
     private static audioQueued = 0
     private static pendingInitConfigs = new Map<string, string>()
     private static initGeneration = new Map<string, number>()
+    private static pendingWorkerGeneration = new Map<string, number>()
     private static desiredOutputs = new Map<string, { deviceIndex: number; displayMode: string; pixelFormat: string; enableKeying: boolean; audioChannels: number; colorSpace: string }>()
     private static recoveryTimers = new Map<string, ReturnType<typeof setTimeout>>()
     private static recoveryAttempts = new Map<string, number>()
@@ -87,6 +88,7 @@ export class BlackmagicBridge {
         if (timer) clearTimeout(timer)
         this.initTimers.delete(outputId)
         this.pendingInitConfigs.delete(outputId)
+        this.pendingWorkerGeneration.delete(outputId)
         const waiters = this.initWaiters.get(outputId) || []
         this.initWaiters.delete(outputId)
         for (const resolve of waiters) resolve(ok)
@@ -99,6 +101,7 @@ export class BlackmagicBridge {
     private static onWorkerMessage(msg: any) {
         switch (msg?.type) {
             case "bmdState": {
+                if (this.initWaiters.has(msg.outputId) && this.pendingWorkerGeneration.get(msg.outputId) !== SenderThread.getGeneration()) break
                 const st: BmdState = { ready: !!msg.ready, displayMode: msg.displayMode || "", pixelFormat: msg.pixelFormat || "", enableKeying: !!msg.enableKeying, colorSpace: msg.colorSpace || "", targetSize: msg.targetSize || { width: 0, height: 0 }, stable: msg.stable !== false, framerate: Number(msg.framerate) || 0 }
                 const was = this.states.get(msg.outputId)
                 // Ignore unsolicited readiness from an output that was stopped or timed out.
@@ -201,6 +204,7 @@ export class BlackmagicBridge {
         const generation = (this.initGeneration.get(outputId) || 0) + 1
         this.initGeneration.set(outputId, generation)
         this.pendingInitConfigs.set(outputId, config)
+        this.pendingWorkerGeneration.set(outputId, SenderThread.getGeneration())
         return new Promise((resolve) => {
             this.initWaiters.set(outputId, [resolve])
             this.initTimers.set(outputId, setTimeout(() => {
