@@ -206,7 +206,7 @@ export interface MainSendPayloads {
     [Main.PROJECTOR_REMOVE]: { id: string }
     [Main.PROJECTOR_INPUT]: { ids: string[]; code: string }
     [Main.PROJECTOR_DISCOVER]: { prefix: string; start?: number; count?: number }
-    [Main.PROJECTOR_COMMAND]: { ids: string[]; action: "powerOn" | "powerOff" | "powerState" | "muteVideo" | "unmuteVideo" }
+    [Main.PROJECTOR_COMMAND]: { ids: string[]; action: "powerOn" | "powerOff" | "powerState" | "muteVideo" | "unmuteVideo" | "muteAudio" | "unmuteAudio" }
     // DEV
     [Main.LOG]: any
     /////
