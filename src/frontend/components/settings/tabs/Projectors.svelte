@@ -70,6 +70,19 @@
         finally { busy = false }
     }
 
+    async function switchInput(id: string) {
+        const code = (inputCodes[id] ?? "").trim()
+        if (!/^[1-5][1-9]$/.test(code)) { error = "Enter a valid two-digit PJLink input code"; return }
+        busy = true
+        error = ""
+        try {
+            const response = await requestMain(Main.PROJECTOR_INPUT, { ids: [id], code })
+            if (!response) error = "Input switch timed out"
+            else results = [...response, ...results.filter((r) => r.id !== id)]
+        } catch (err) { error = String(err) }
+        finally { busy = false }
+    }
+
     function toggle(id: string, checked: boolean) {
         const next = new Set(selected)
         if (checked) next.add(id)
@@ -142,7 +155,8 @@
                         <label>Input code (PJLink, e.g. 31 for HDMI 1)
                             <input placeholder="31" maxlength="2" value={inputCodes[p.id] ?? ""} on:input={(e) => inputCodes = { ...inputCodes, [p.id]: e.currentTarget.value }} />
                         </label>
-                        <p class="hint">Input switching is not yet connected. Input codes vary by projector.</p>
+                        <button disabled={busy || !/^[1-5][1-9]$/.test(inputCodes[p.id] ?? "")} on:click={() => switchInput(p.id)}>Switch input</button>
+                        <p class="hint">Uses PJLink input codes; check your projector manual for supported sources.</p>
                         <button class="remove" disabled={busy} on:click={() => remove(p.id)}>Remove projector</button>
                     </div>
                 {/if}
