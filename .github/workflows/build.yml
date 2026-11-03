@@ -42,7 +42,7 @@ jobs:
             build-essential python3 pkg-config \
             libfontconfig1-dev uuid-dev libltc-dev \
             libasound2-dev libudev-dev libnss3 libatk-bridge2.0-0 \
-            libgtk-3-0 libgbm1 libxss1
+            libgtk-3-0 libgbm1 libxss1 libegl1 libgles2
 
       - name: Install dependencies
         run: npm ci
