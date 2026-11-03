@@ -124,6 +124,7 @@ export const mainResponses: MainResponses = {
     [Main.GET_SCREENS]: () => getScreens(),
     [Main.GET_WINDOWS]: () => getScreens("window"),
     [Main.GET_DISPLAYS]: () => screen.getAllDisplays(),
+    [Main.DISPLAYS_CHANGED]: () => undefined,
     [Main.GET_GRAPHICS_DEVICES]: async () => await listGraphicsDevices(),
     [Main.OUTPUT]: (_, e) => (e.sender.id === getMainWindow()?.webContents.id ? "false" : "true"),
     // MEDIA
