@@ -6,7 +6,7 @@ export function audioSamplesForFrame(frameIndex: number, sampleRate: number, fps
     const i = BigInt(frameIndex)
     const numerator = BigInt(sampleRate) * BigInt(fpsDenominator)
     const denominator = BigInt(fpsNumerator)
-    const samples = ((i + 1n) * numerator) / denominator - (i * numerator) / denominator
+    const samples = ((i + BigInt(1)) * numerator) / denominator - (i * numerator) / denominator
     if (samples > BigInt(Number.MAX_SAFE_INTEGER)) throw new RangeError("Audio sample count overflow")
     return Number(samples)
 }
