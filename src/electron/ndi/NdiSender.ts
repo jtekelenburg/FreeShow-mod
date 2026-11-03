@@ -138,10 +138,12 @@ export class NdiSender {
     }
 
     static async createSenderNDI(id: string, name = "", groups?: string) {
-        this.desiredSenders.set(id, { name, groups })
+        // Destroy the old worker sender before registering the replacement.
+        // stopSenderNDI removes the desired configuration, so the order matters.
         if (this.NDI[id]) {
             this.stopSenderNDI(id)
         }
+        this.desiredSenders.set(id, { name, groups })
 
         const worker = this.worker
         if (!worker) {
