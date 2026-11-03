@@ -1373,15 +1373,25 @@ export function runSenderWorker(adapters: SenderAdapter[]) {
                 break
             case "bmdStopAll":
                 bmdRequestIds.clear()
-                for (const id of bmdOperations.keys()) queueBmd(id, () => { bmdForget(id); BlackmagicSender.stop(id) })
-                bmdForget()
-                BlackmagicSender.stopAll()
+                // Wait for in-flight native initializations before closing their devices.
+                // Queue each stop on its own output so a late init cannot reopen a stopped device.
+                for (const id of new Set([...bmdOperations.keys(), ...Object.keys(BlackmagicSender.playbackData)])) {
+                    queueBmd(id, () => { bmdForget(id); BlackmagicSender.stop(id) })
+                }
+                if (!bmdOperations.size) {
+                    bmdForget()
+                    BlackmagicSender.stopAll()
+                }
                 break
             case "bmdShutdown":
                 bmdRequestIds.clear()
-                for (const id of bmdOperations.keys()) queueBmd(id, () => { bmdForget(id); BlackmagicSender.stop(id) })
-                bmdForget()
-                BlackmagicSender.shutdown()
+                for (const id of new Set([...bmdOperations.keys(), ...Object.keys(BlackmagicSender.playbackData)])) {
+                    queueBmd(id, () => { bmdForget(id); BlackmagicSender.stop(id) })
+                }
+                if (!bmdOperations.size) {
+                    bmdForget()
+                    BlackmagicSender.shutdown()
+                }
                 break
             case "bmdReset":
                 BlackmagicSender.resetProblematicDevice(msg.outputId)
