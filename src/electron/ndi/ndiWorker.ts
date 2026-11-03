@@ -1,4 +1,5 @@
 import { loadOsrCapture, frameTimestamp, type FrameSize, type SenderAdapter, type VideoFrameOpts } from "../capture/senderWorker"
+import { assertFrameBuffer, assertAudioBuffer } from "../capture/FrameValidation"
 
 // NDI adapter for the shared sender engine (../capture/senderWorker): everything grandiose-specific.
 //
@@ -114,6 +115,8 @@ export const ndiAdapter: SenderAdapter = {
     // NDI's wire format is UYVY 4:2:2, so sending it directly skips the SDK's own conversion: a frame
     // osr-capture converted on the GPU (format 1/2) goes as it is, BGRA is converted here
     prepareVideo(_grandiose: any, buffer: Buffer, size: FrameSize, format: number, transparent: boolean) {
+        if (format !== 0 && format !== 1 && format !== 2) throw new RangeError(`Unsupported NDI frame format: ${format}`)
+        assertFrameBuffer(buffer, size, format === 0 ? "BGRA" : format === 1 ? "UYVY" : "UYVA")
         if (format === 1 || format === 2) return { data: buffer, format }
 
         const osr = loadOsrCapture()
@@ -137,6 +140,7 @@ export const ndiAdapter: SenderAdapter = {
     },
 
     audioFrame(grandiose: any, buffer: Buffer, sampleRate: number, channelCount: number) {
+        assertAudioBuffer(buffer, sampleRate, channelCount, BYTES_PER_FLOAT32)
         const noSamples = Math.trunc(buffer.length / (channelCount * BYTES_PER_FLOAT32))
         if (noSamples <= 0) return null
 
