@@ -1,8 +1,9 @@
 name: CI
 
-# Manual activation for now (run from the Actions tab); can be wired to pull_request later.
 on:
     workflow_dispatch:
+    pull_request:
+        branches: [main]
 
 jobs:
     checks:
@@ -20,10 +21,13 @@ jobs:
             - name: Install libraries
               run: |
                   sudo apt-get update
-                  sudo apt-get install -y libfontconfig1-dev uuid-dev libltc-dev --fix-missing
+                  sudo apt-get install -y libfontconfig1-dev uuid-dev libltc-dev libegl1 libgles2 --fix-missing
 
             - name: Install dependencies
               run: npm ci
+
+            - name: Unit tests
+              run: npm run test:unit
 
             # Formatting and svelte type-check currently have a pre-existing backlog, so they are
             # reported but non-blocking for now. Flip continue-on-error off once the backlog is cleared.

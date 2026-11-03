@@ -1,0 +1,78 @@
+name: Windows build verification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [feature/media-reliability]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows x64 / Node 22
+    runs-on: windows-2022
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      npm_config_arch: x64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          architecture: x64
+          cache: npm
+
+      - name: Install Python for node-gyp
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+
+      - name: Verify native build toolchain
+        run: |
+          node --version
+          npm --version
+          python --version
+          where.exe cl.exe 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host 'MSVC is available through the Visual Studio Build Tools environment when node-gyp invokes it.'
+            $global:LASTEXITCODE = 0
+          }
+
+      - name: Install dependencies and rebuild Electron native modules
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Compile Electron TypeScript
+        run: npm run build:electron:dev
+
+      - name: Build application
+        run: npm run build
+
+      - name: Upload compiled build
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: freeshow-windows-x64-build
+          path: |
+            build/electron/
+            build/types/
+            public/build/
+          if-no-files-found: error
+          retention-days: 7

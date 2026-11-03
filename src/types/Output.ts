@@ -15,6 +15,8 @@ export interface Output {
     color: string
     bounds: { x: number; y: number; width: number; height: number }
     boundsLocked?: boolean
+    /** Clockwise rotation of rendered content, not the operating system display. */
+    rotation?: 0 | 90 | 180 | 270
     cropping?: Cropping
     blending?: { left: number; right: number; rotate: number; opacity: number; centered: boolean; offset: number }
     screen: string | null

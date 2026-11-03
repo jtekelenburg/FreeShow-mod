@@ -23,7 +23,30 @@
     $: options = sortByName(keysToID($outputs))
     $: if (options.length && (!$currentOutputSettings || !$outputs[$currentOutputSettings])) currentOutputSettings.set(options[0].id)
 
+    type DisplayOrientation = { id: number; rotation?: number; bounds: { width: number; height: number } }
     let screens: any[] = []
+    let autoDetectOrientation = false
+    let detectingOrientation = false
+    let orientationError = ""
+    $: detectedDisplay = (screens as DisplayOrientation[]).find((display) => display.id.toString() === currentScreen.screen)
+    $: detectedAngle = typeof detectedDisplay?.rotation === "number" ? ((detectedDisplay.rotation % 360) + 360) % 360 : null
+    $: detectedShape = detectedDisplay ? (detectedDisplay.bounds.height > detectedDisplay.bounds.width ? "Portrait" : detectedDisplay.bounds.height < detectedDisplay.bounds.width ? "Landscape" : "Square") : "Unknown"
+
+    async function detectDisplayOrientation() {
+        if (detectingOrientation) return
+        detectingOrientation = true
+        orientationError = ""
+        try {
+            const displays = await requestMain(Main.GET_DISPLAYS)
+            if (!displays) throw new Error("Display information unavailable")
+            screens = displays.sort(sortScreensByPosition).sort(internalFirst)
+            updateScreenLayout()
+        } catch (err) {
+            orientationError = err instanceof Error ? err.message : String(err)
+        } finally {
+            detectingOrientation = false
+        }
+    }
 
     let screenId: string | null = null
     $: screenId = $currentOutputSettings
@@ -46,11 +69,7 @@
     let totalScreensWidth = 0
     let totalScreensHeight = 0
 
-    onMount(async () => {
-        const displays = (await requestMain(Main.GET_DISPLAYS)) || []
-        let sortedScreens = displays.sort(sortScreensByPosition)
-        screens = sortedScreens.sort(internalFirst)
-
+    function updateScreenLayout() {
         // get min/max bounds
         minPosX = null
         minPosY = null
@@ -77,6 +96,21 @@
                 y: a.bounds.y - (minPosY || 0)
             }
         })
+    }
+
+    onMount(() => {
+        const interval = setInterval(() => {
+            if (autoDetectOrientation && !detectingOrientation) void detectDisplayOrientation()
+        }, 3000)
+        return () => clearInterval(interval)
+    })
+
+    onMount(async () => {
+        const displays = (await requestMain(Main.GET_DISPLAYS)) || []
+        let sortedScreens = displays.sort(sortScreensByPosition)
+        screens = sortedScreens.sort(internalFirst)
+
+        updateScreenLayout()
     })
 
     // const fakeScreen0 = {
@@ -138,6 +172,15 @@
             activePopup.set(null)
             alertMessage.set("")
         }
+    }
+
+    function setRotation(value: number) {
+        if (!screenId || ![0, 90, 180, 270].includes(value)) return
+        outputs.update((all) => {
+            if (!all[screenId!]) return all
+            all[screenId!].rotation = value as 0 | 90 | 180 | 270
+            return all
+        })
     }
 
     function lockScreen() {
@@ -272,6 +315,26 @@
         </InputRow>
     {/if}
 
+    {#if !activateOutput}
+        <div class="outputRotation">
+            <label for="output-rotation">Output content rotation</label>
+            <select id="output-rotation" value={currentScreen.rotation ?? 0} on:change={(e) => setRotation(Number(e.currentTarget.value))}>
+                <option value={0}>0° — Normal</option>
+                <option value={90}>90° — Clockwise</option>
+                <option value={180}>180° — Upside down</option>
+                <option value={270}>270° — Counterclockwise</option>
+            </select>
+            <label class="detectedOrientation"><input type="checkbox" bind:checked={autoDetectOrientation} /> Automatically monitor display orientation (every 3 seconds)</label>
+            <div class="detectedOrientation">
+                <span>Operating system display: <strong>{detectedShape}{detectedAngle === null ? "" : " · " + detectedAngle + "°"}</strong></span>
+                <button type="button" disabled={detectingOrientation} on:click={detectDisplayOrientation}>{detectingOrientation ? "Detecting…" : "Detect orientation"}</button>
+            </div>
+            {#if orientationError}<small role="alert">{orientationError}</small>{/if}
+            <small>Detected orientation comes from the operating system. FreeShow rotation is independent; rotating both can double-rotate the image.</small>
+            <small>Rotates FreeShow content only. The operating system display orientation is unchanged.</small>
+        </div>
+    {/if}
+
     <br />
 
     <div class="content">
@@ -328,6 +391,11 @@
 {/if}
 
 <style>
+    .outputRotation { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+    .outputRotation select { padding: 8px; border-radius: 6px; background: var(--primary-darker); color: inherit; }
+    .outputRotation small { opacity: 0.7; }
+    .detectedOrientation { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .detectedOrientation button { padding: 6px 10px; }
     .content {
         width: 100%;
         display: flex;

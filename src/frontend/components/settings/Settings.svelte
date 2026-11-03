@@ -8,6 +8,7 @@
     import SmartSettings from "../../ai/components/settings/SmartSettings.svelte"
     import AudioRouting from "./tabs/AudioRouting.svelte"
     import Connection from "./tabs/Connection.svelte"
+    import Projectors from "./tabs/Projectors.svelte"
     import Files from "./tabs/Files.svelte"
     import FilesButtons from "./tabs/FilesButtons.svelte"
     import General from "./tabs/General.svelte"
@@ -47,7 +48,7 @@
 
 <main>
     <div class="title" style={scrolled ? "box-shadow: 2px 2px 4px 5px rgb(0 0 0 / 0.1);" : ""}>
-        <h2>{translateText(`settings.${tabId}`, $dictionary)}</h2>
+        <h2>{tabId === "projectors" ? "Projectors" : translateText(`settings.${tabId}`, $dictionary)}</h2>
 
         <div style="display: flex;align-items: center;gap: 8px;">
             {#if hints[tabId]}
@@ -85,6 +86,8 @@
             <AudioRouting />
         {:else if tabId === "connection"}
             <Connection />
+        {:else if tabId === "projectors"}
+            <Projectors />
         {:else if tabId === "files"}
             <Files />
         {:else if tabId === "profiles"}

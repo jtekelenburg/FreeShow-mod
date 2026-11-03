@@ -86,6 +86,12 @@ export enum Main {
     REFRESH_SHOWS = "REFRESH_SHOWS",
     GET_EMPTY_SHOWS = "GET_EMPTY_SHOWS",
     FULL_SHOWS_LIST = "FULL_SHOWS_LIST",
+    PROJECTOR_LIST = "PROJECTOR_LIST",
+    PROJECTOR_SAVE = "PROJECTOR_SAVE",
+    PROJECTOR_REMOVE = "PROJECTOR_REMOVE",
+    PROJECTOR_COMMAND = "PROJECTOR_COMMAND",
+    PROJECTOR_INPUT = "PROJECTOR_INPUT",
+    PROJECTOR_DISCOVER = "PROJECTOR_DISCOVER",
     GET_SCREENS = "GET_SCREENS",
     GET_WINDOWS = "GET_WINDOWS",
     GET_DISPLAYS = "GET_DISPLAYS",
@@ -196,6 +202,11 @@ export enum Main {
 }
 
 export interface MainSendPayloads {
+    [Main.PROJECTOR_SAVE]: { id: string; name: string; host: string; port?: number; groups?: string[]; password?: string }
+    [Main.PROJECTOR_REMOVE]: { id: string }
+    [Main.PROJECTOR_INPUT]: { ids: string[]; code: string }
+    [Main.PROJECTOR_DISCOVER]: { prefix: string; start?: number; count?: number }
+    [Main.PROJECTOR_COMMAND]: { ids: string[]; action: "powerOn" | "powerOff" | "powerState" | "muteVideo" | "unmuteVideo" | "muteAudio" | "unmuteAudio" }
     // DEV
     [Main.LOG]: any
     /////
@@ -309,6 +320,12 @@ export interface MainSendPayloads {
 }
 
 export interface MainReturnPayloads {
+    [Main.PROJECTOR_LIST]: Promise<{ id: string; name: string; host: string; port?: number; groups?: string[] }[]>
+    [Main.PROJECTOR_SAVE]: Promise<{ ok: boolean; error?: string }>
+    [Main.PROJECTOR_REMOVE]: Promise<{ ok: boolean }>
+    [Main.PROJECTOR_INPUT]: Promise<{ id: string; name: string; ok: boolean; value?: string; error?: string }[]>
+    [Main.PROJECTOR_DISCOVER]: Promise<{ host: string; name: string }[]>
+    [Main.PROJECTOR_COMMAND]: Promise<{ id: string; name: string; ok: boolean; value?: string; error?: string }[]>
     // DEV
     [Main.IS_DEV]: boolean
     [Main.GET_CACHE_PATH]: string

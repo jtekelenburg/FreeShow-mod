@@ -1,3 +1,4 @@
+import { audioFrameRateRatio, audioSamplesForFrame } from "./AudioFrameClock"
 import type { Size } from "electron"
 import type { PlaybackChannel } from "macadam"
 import os from "os"
@@ -790,16 +791,6 @@ export class BlackmagicSender {
         // Use queued audio to get exactly the right amount for this frame
         const audioChannels = data.audioChannels || 2
         const outputAudioQueue = this.audioQueuesByOutput[outputId]
-        const audioData = outputAudioQueue && outputAudioQueue.length > 0 && audioFrame !== null ? this.getAudioForFrame(outputId, audioChannels, data.displayMode) : this.getSilentAudio(audioChannels, data.displayMode)
-
-        // Validate audio buffer size
-        const expectedSampleCount = data.expectedAudioSampleCount
-        const expectedAudioSize = expectedSampleCount * 2 * audioChannels
-        if (audioData.length !== expectedAudioSize && now - (data.lastAudioSizeWarningTime || 0) > 5000) {
-            data.lastAudioSizeWarningTime = now
-            console.warn(`Audio buffer size mismatch: got ${audioData.length} bytes, expected ${expectedAudioSize} bytes (samples: ${expectedSampleCount}, channels: ${data.audioChannels})`)
-        }
-
         // Calculate stream time in DeckLink timescale units (duration ticks) for this frame.
         const frameDurationTicks = data.frameDurationTicks || 1000
         // keep each frame at least one period ahead of the card's clock, or the card drops it as late
@@ -821,16 +812,29 @@ export class BlackmagicSender {
         }
         const currentTime = data.scheduledFrames * frameDurationTicks
 
+        const rate = audioFrameRateRatio(this.getAccurateFrameRate(data.displayMode))
+        const samplesForThisFrame = audioSamplesForFrame(data.scheduledFrames, 48000, rate.numerator, rate.denominator)
+        const audioData = outputAudioQueue && outputAudioQueue.length > 0 && audioFrame !== null ? this.getAudioForFrame(outputId, audioChannels, data.displayMode, samplesForThisFrame) : Buffer.alloc(samplesForThisFrame * 2 * audioChannels)
+
+        // Validate audio buffer size
+        const expectedSampleCount = samplesForThisFrame
+        const expectedAudioSize = expectedSampleCount * 2 * audioChannels
+        if (audioData.length !== expectedAudioSize && now - (data.lastAudioSizeWarningTime || 0) > 5000) {
+            data.lastAudioSizeWarningTime = now
+            console.warn(`Audio buffer size mismatch: got ${audioData.length} bytes, expected ${expectedAudioSize} bytes (samples: ${expectedSampleCount}, channels: ${data.audioChannels})`)
+        }
+
+
         // Calculate correct sample frame count based on actual frame rate
         // For 48kHz audio: sampleFrameCount = 48000 / frameRate
         // Use accurate fractional frame rate for precise audio sizing
-        const correctSampleFrameCount = expectedSampleCount
+        // The exact audio sample count is computed from the scheduled frame index above.
 
         // Schedule the frame directly with playback.schedule()
         const frameDataToSchedule = {
             video: convertedFrame,
             audio: audioData,
-            sampleFrameCount: correctSampleFrameCount,
+            sampleFrameCount: samplesForThisFrame,
             time: currentTime
         }
 
@@ -1024,20 +1028,18 @@ export class BlackmagicSender {
         }
     }
 
-    static getAudioForFrame(outputId: string, channelCount: number, displayMode: string): Buffer {
-        // Calculate exact audio samples needed for this frame
-        const accurateFrameRate = this.getAccurateFrameRate(displayMode)
-        const expectedSampleCount = Math.round(48000 / accurateFrameRate)
+    static getAudioForFrame(outputId: string, channelCount: number, displayMode: string, sampleCount?: number): Buffer {
+        const expectedSampleCount = sampleCount ?? Math.round(48000 / this.getAccurateFrameRate(displayMode))
         const expectedAudioSize = expectedSampleCount * 2 * channelCount // 2 bytes per sample (16-bit)
 
         const outputQueue = this.audioQueuesByOutput[outputId]
         if (!outputQueue) {
-            return this.getSilentAudio(channelCount, displayMode)
+            return Buffer.alloc(expectedAudioSize)
         }
 
         // If we don't have enough audio yet, return silent audio
         if (outputQueue.length < expectedAudioSize) {
-            return this.getSilentAudio(channelCount, displayMode)
+            return Buffer.alloc(expectedAudioSize)
         }
 
         // Extract exact amount needed for this frame.

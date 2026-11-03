@@ -16,6 +16,10 @@
     $: outputId = Object.keys($outputs)[0]
 
     $: sceneStyleId = $outputs[outputId]?.out?.scene?.style
+    $: rotation = $outputs[outputId]?.rotation ?? 0
+    $: quarterTurn = rotation === 90 || rotation === 270
+    $: rotatedWidth = quarterTurn ? height : width
+    $: rotatedHeight = quarterTurn ? width : height
 
     // get output resolution
     let width = 0
@@ -138,13 +142,20 @@
         </div>
     {/if}
 
-    {#if $presenting}
-        <canvas class="presentCanvas" bind:this={presentCanvas}></canvas>
-    {:else if $outputs[outputId]?.stageOutput}
-        <StageLayout {outputId} stageId={$outputs[outputId].stageOutput} edit={false} />
-    {:else if loaded}
-        <Output {outputId} style={getStyleResolution(resolution, width, height, "fit")} />
-    {/if}
+    <div
+        class="rotatedContent"
+        style:width="{rotatedWidth}px"
+        style:height="{rotatedHeight}px"
+        style:transform="translate(-50%, -50%) rotate({rotation}deg)"
+    >
+        {#if $presenting}
+            <canvas class="presentCanvas" bind:this={presentCanvas}></canvas>
+        {:else if $outputs[outputId]?.stageOutput}
+            <StageLayout {outputId} stageId={$outputs[outputId].stageOutput} edit={false} />
+        {:else if loaded}
+            <Output {outputId} style={getStyleResolution(resolution, rotatedWidth, rotatedHeight, "fit")} />
+        {/if}
+    </div>
 
     <!-- black overlay for live preparation/changes -->
     {#if $livePrepare[outputId]}
@@ -156,6 +167,17 @@
 </div>
 
 <style>
+    .rotatedContent {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform-origin: center center;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
     .presentCanvas {
         width: 100%;
         height: 100%;

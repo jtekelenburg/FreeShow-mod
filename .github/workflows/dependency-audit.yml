@@ -1,0 +1,33 @@
+name: Dependency security audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/media-reliability]
+    paths:
+      - package.json
+      - package-lock.json
+      - .github/workflows/dependency-audit.yml
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '15 9 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  npm-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=moderate
+      - name: Audit all dependencies
+        if: always()
+        run: npm audit --audit-level=moderate
