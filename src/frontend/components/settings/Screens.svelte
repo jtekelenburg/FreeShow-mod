@@ -140,6 +140,15 @@
         }
     }
 
+    function setRotation(value: number) {
+        if (!screenId || ![0, 90, 180, 270].includes(value)) return
+        outputs.update((all) => {
+            if (!all[screenId!]) return all
+            all[screenId!].rotation = value as 0 | 90 | 180 | 270
+            return all
+        })
+    }
+
     function lockScreen() {
         if (!screenId) return
 
@@ -272,6 +281,19 @@
         </InputRow>
     {/if}
 
+    {#if !activateOutput}
+        <div class="outputRotation">
+            <label for="output-rotation">Output content rotation</label>
+            <select id="output-rotation" value={currentScreen.rotation ?? 0} on:change={(e) => setRotation(Number(e.currentTarget.value))}>
+                <option value={0}>0° — Normal</option>
+                <option value={90}>90° — Clockwise</option>
+                <option value={180}>180° — Upside down</option>
+                <option value={270}>270° — Counterclockwise</option>
+            </select>
+            <small>Rotates FreeShow content only. The operating system display orientation is unchanged.</small>
+        </div>
+    {/if}
+
     <br />
 
     <div class="content">
@@ -328,6 +350,9 @@
 {/if}
 
 <style>
+    .outputRotation { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+    .outputRotation select { padding: 8px; border-radius: 6px; background: var(--primary-darker); color: inherit; }
+    .outputRotation small { opacity: 0.7; }
     .content {
         width: 100%;
         display: flex;
