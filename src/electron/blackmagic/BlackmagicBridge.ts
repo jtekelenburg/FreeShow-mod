@@ -1,5 +1,6 @@
 import type { Size } from "electron"
 import { cardFormat } from "./cardFormat"
+import { assertAudioBuffer, assertFrameBuffer } from "../capture/FrameValidation"
 import { CaptureHelper } from "../capture/CaptureHelper"
 import { SenderCapture } from "../capture/SenderCapture"
 import { OutputHelper } from "../output/OutputHelper"
@@ -21,6 +22,8 @@ export type BmdState = {
 export class BlackmagicBridge {
     private static states = new Map<string, BmdState>()
     private static initWaiters = new Map<string, ((ok: boolean) => void)[]>()
+    private static initTimers = new Map<string, ReturnType<typeof setTimeout>>()
+    private static readonly INIT_TIMEOUT_MS = 15000
     private static hooked = false
     private static audioQueued = 0
 
@@ -36,6 +39,19 @@ export class BlackmagicBridge {
         BlackmagicManager.senderControl = { isDeviceStable: (id) => this.isDeviceStable(id), resetProblematicDevice: (id) => this.resetProblematicDevice(id) }
     }
 
+    private static settleInit(outputId: string, ok: boolean) {
+        const timer = this.initTimers.get(outputId)
+        if (timer) clearTimeout(timer)
+        this.initTimers.delete(outputId)
+        const waiters = this.initWaiters.get(outputId) || []
+        this.initWaiters.delete(outputId)
+        for (const resolve of waiters) resolve(ok)
+    }
+
+    private static settleAllInit() {
+        for (const id of [...this.initWaiters.keys()]) this.settleInit(id, false)
+    }
+
     private static onWorkerMessage(msg: any) {
         switch (msg?.type) {
             case "bmdState": {
@@ -49,9 +65,7 @@ export class BlackmagicBridge {
                     // the card plays out from the first frame it is given, and a still page sends none
                     if (!was?.ready) OutputHelper.Lifecycle.requestRepaint(msg.outputId)
                 }
-                const waiters = this.initWaiters.get(msg.outputId) || []
-                this.initWaiters.delete(msg.outputId)
-                for (const w of waiters) w(st.ready)
+                this.settleInit(msg.outputId, st.ready)
                 break
             }
             case "bmdAudioQueued":
@@ -118,19 +132,33 @@ export class BlackmagicBridge {
             const list = this.initWaiters.get(outputId) || []
             list.push(resolve)
             this.initWaiters.set(outputId, list)
-            worker.postMessage({ type: "bmdInit", outputId, deviceIndex, displayMode, pixelFormat, enableKeying, audioChannels, colorSpace })
+            if (!this.initTimers.has(outputId)) {
+                this.initTimers.set(outputId, setTimeout(() => {
+                    console.warn(`[BMD] Timed out initializing output ${outputId}`)
+                    this.settleInit(outputId, false)
+                }, this.INIT_TIMEOUT_MS))
+            }
+            try {
+                worker.postMessage({ type: "bmdInit", outputId, deviceIndex, displayMode, pixelFormat, enableKeying, audioChannels, colorSpace })
+            } catch (err) {
+                console.error(`[BMD] Could not initialize ${outputId}:`, err)
+                this.settleInit(outputId, false)
+            }
         })
     }
 
     static stop(outputId: string) {
+        this.settleInit(outputId, false)
         this.states.delete(outputId)
         this.worker()?.postMessage({ type: "bmdStop", outputId })
     }
     static stopAll() {
+        this.settleAllInit()
         this.states.clear()
         this.worker()?.postMessage({ type: "bmdStopAll" })
     }
     static shutdown() {
+        this.settleAllInit()
         this.states.clear()
         this.worker()?.postMessage({ type: "bmdShutdown" })
     }
@@ -145,6 +173,7 @@ export class BlackmagicBridge {
     /** interleaved int16 PCM; copied because the caller may reuse its buffer */
     static sendAudioBuffer(buffer: Buffer, opts: { sampleRate: number; channelCount: number }) {
         if (!this.states.size || !buffer.length) return
+        assertAudioBuffer(buffer, opts.sampleRate, opts.channelCount, 2)
         const copy = new Uint8Array(buffer.byteLength)
         copy.set(buffer)
         this.worker()?.postMessage({ type: "bmdAudio", buffer: copy.buffer, byteOffset: 0, byteLength: copy.byteLength, opts }, [copy.buffer])
@@ -153,6 +182,7 @@ export class BlackmagicBridge {
     /** CPU capture path only */
     static scheduleFrame(outputId: string, videoFrame: Buffer, size: Size, framerate: number, preConverted: boolean) {
         if (!this.states.has(outputId)) return
+        if (!preConverted) assertFrameBuffer(videoFrame, size, "BGRA")
         const copy = new Uint8Array(videoFrame.byteLength)
         copy.set(videoFrame)
         this.worker()?.postMessage({ type: "bmdFrame", outputId, buffer: copy.buffer, byteOffset: 0, byteLength: copy.byteLength, size, framerate, preConverted }, [copy.buffer])
