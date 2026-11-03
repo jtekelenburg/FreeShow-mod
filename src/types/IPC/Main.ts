@@ -91,6 +91,7 @@ export enum Main {
     PROJECTOR_REMOVE = "PROJECTOR_REMOVE",
     PROJECTOR_COMMAND = "PROJECTOR_COMMAND",
     PROJECTOR_INPUT = "PROJECTOR_INPUT",
+    PROJECTOR_DISCOVER = "PROJECTOR_DISCOVER",
     GET_SCREENS = "GET_SCREENS",
     GET_WINDOWS = "GET_WINDOWS",
     GET_DISPLAYS = "GET_DISPLAYS",
@@ -204,6 +205,7 @@ export interface MainSendPayloads {
     [Main.PROJECTOR_SAVE]: { id: string; name: string; host: string; port?: number; groups?: string[]; password?: string }
     [Main.PROJECTOR_REMOVE]: { id: string }
     [Main.PROJECTOR_INPUT]: { ids: string[]; code: string }
+    [Main.PROJECTOR_DISCOVER]: { prefix: string; start?: number; count?: number }
     [Main.PROJECTOR_COMMAND]: { ids: string[]; action: "powerOn" | "powerOff" | "powerState" | "muteVideo" | "unmuteVideo" }
     // DEV
     [Main.LOG]: any
@@ -322,6 +324,7 @@ export interface MainReturnPayloads {
     [Main.PROJECTOR_SAVE]: { ok: boolean; error?: string }
     [Main.PROJECTOR_REMOVE]: { ok: boolean }
     [Main.PROJECTOR_INPUT]: { id: string; name: string; ok: boolean; value?: string; error?: string }[]
+    [Main.PROJECTOR_DISCOVER]: { host: string; name: string }[]
     [Main.PROJECTOR_COMMAND]: { id: string; name: string; ok: boolean; value?: string; error?: string }[]
     // DEV
     [Main.IS_DEV]: boolean
