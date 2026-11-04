@@ -159,6 +159,7 @@
 
             a[screenId].bounds = { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }
             a[screenId].screen = e.detail.id.toString()
+            a[screenId].screenLabel = screens.find((display) => display.id === e.detail.id)?.label || undefined
             // a[screenId].kiosk = true
 
             return a
