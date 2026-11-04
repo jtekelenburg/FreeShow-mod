@@ -49,6 +49,8 @@ export class OutputLifecycle {
         delete this.pendingCaptureStart[id]
     }
 
+    private static disconnectedVisibleOutputs = new Set<string>()
+
     static initListeners() {
         RenderGroups.onChanged = () => toApp(OUTPUT, { channel: "RENDER_GROUPS", data: RenderGroups.snapshot() })
         RenderGroups.onMembership = (changes) => this.applyMembership(changes)
@@ -83,7 +85,14 @@ export class OutputLifecycle {
 
             // Keep assigned outputs on their original display, even after hot-plug.
             const assignedDisplay = output.screen ? screen.getAllDisplays().find((display) => display.id.toString() === output.screen) : undefined
-            if (output.screen && !assignedDisplay) return
+            if (output.screen && !assignedDisplay) {
+                if (output.window.isVisible()) {
+                    this.disconnectedVisibleOutputs.add(id)
+                    output.window.hide()
+                }
+                return
+            }
+            const shouldRestoreVisibility = this.disconnectedVisibleOutputs.delete(id)
             const targetBounds = assignedDisplay && !output.boundsLocked
                 ? assignedDisplay.bounds
                 : OutputVisibility.resolveOutputBounds({ ...output, bounds: output.intendedBounds, id })
@@ -91,6 +100,7 @@ export class OutputLifecycle {
             if (JSON.stringify(currentBounds) !== JSON.stringify(targetBounds)) {
                 OutputHelper.Bounds.updateBounds({ id, bounds: targetBounds })
             }
+            if (shouldRestoreVisibility && assignedDisplay) OutputVisibility.showWindow(output.window)
         })
     }
 
@@ -1517,6 +1527,7 @@ export class OutputLifecycle {
     }
 
     static async removeOutput(id: string, reopen: Output | null = null) {
+        this.disconnectedVisibleOutputs.delete(id)
         this.clearPendingCaptureStart(id)
 
         // followers move at once; the remaining class shrinks to its new largest size
