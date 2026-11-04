@@ -10,6 +10,7 @@ export class Output {
     invisible?: boolean
     boundsLocked?: boolean
     screen?: string | null
+    screenLabel?: string
     intendedBounds?: Rectangle
     // configured send size; a shared render runs at its class's largest size and downscales to this
     sendSize?: { width: number; height: number }
