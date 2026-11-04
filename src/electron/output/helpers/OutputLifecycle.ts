@@ -20,6 +20,7 @@ import { ruleViolation } from "../../utils/ruleCheck"
 import { outputOptions } from "../../utils/windowOptions"
 import { OutputHelper } from "../OutputHelper"
 import { MediaLayers } from "./MediaLayers"
+import { resolveAssignedDisplay } from "./DisplayIdentity"
 import { setOutputAlwaysOnTop, useOutputPanel } from "./OutputAlwaysOnTop"
 import { OutputPresenter } from "./OutputPresenter"
 import { OutputVisibility } from "./OutputVisibility"
@@ -84,17 +85,8 @@ export class OutputLifecycle {
             }
 
             // Keep assigned outputs on their original display, even after hot-plug.
-            const displays = screen.getAllDisplays()
-            let assignedDisplay = output.screen ? displays.find((display) => display.id.toString() === output.screen) : undefined
-            // Labels are hints, not globally unique identifiers. Only recover when
-            // exactly one connected display matches, never guess between duplicates.
-            if (!assignedDisplay && output.screenLabel) {
-                const matches = displays.filter((display) => display.label === output.screenLabel)
-                if (matches.length === 1) {
-                    assignedDisplay = matches[0]
-                    output.screen = assignedDisplay.id.toString()
-                }
-            }
+            const assignedDisplay = resolveAssignedDisplay(screen.getAllDisplays(), output)
+            if (assignedDisplay && output.screen !== String(assignedDisplay.id)) output.screen = String(assignedDisplay.id)
             if (output.screen && !assignedDisplay) {
                 if (output.window.isVisible()) {
                     this.disconnectedVisibleOutputs.add(id)
@@ -146,12 +138,11 @@ export class OutputLifecycle {
 
         OutputHelper.setOutput(id, { window: outputWindow, osr: this.isOsrOutput(output), invisible: output.invisible, boundsLocked: output.boundsLocked, screen: output.screen, screenLabel: output.screenLabel, intendedBounds: resolvedBounds, sendSize, transparent: output.transparent, webrtcData: output.webrtcData, rtmpData: output.rtmpData })
         // OutputHelper.setOutput(id, { window: outputWindow, previewWindow: previewWindow })
-        // Reconcile persisted monitor hints at startup as well as on hot-plug.
-        // The stored numeric ID can change after reboot.
+        // Reconcile the saved monitor assignment after startup without guessing.
         const active = OutputHelper.getOutput(id)
-        if (active?.screenLabel && !screen.getAllDisplays().some((display) => display.id.toString() === active.screen)) {
-            const matches = screen.getAllDisplays().filter((display) => display.label === active.screenLabel)
-            if (matches.length === 1) active.screen = matches[0].id.toString()
+        if (active) {
+            const matched = resolveAssignedDisplay(screen.getAllDisplays(), active)
+            if (matched) active.screen = String(matched.id)
         }
         OutputHelper.Bounds.updateBounds({ id: output.id!, bounds: resolvedBounds })
         this.updateWindowConstraints(id)
