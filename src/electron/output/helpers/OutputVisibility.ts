@@ -6,6 +6,7 @@ import type { Output } from "../../../types/Output"
 import { OutputHelper } from "../OutputHelper"
 import { setOutputAlwaysOnTop } from "./OutputAlwaysOnTop"
 import { OutputBounds } from "./OutputBounds"
+import { resolveAssignedDisplay } from "./DisplayIdentity"
 
 export class OutputVisibility {
     static async toggleOutputs(data: { outputs: (Output & { id: string })[]; state: boolean; force?: boolean; autoStartup?: boolean; autoPosition?: boolean }) {
@@ -84,8 +85,8 @@ export class OutputVisibility {
 
         // A user-assigned display takes priority over stale screen coordinates.
         // If disconnected, preserve configured geometry rather than switching monitors.
-        if (output.screen) {
-            const assigned = displays.find((display) => display.id.toString() === output.screen)
+        if (output.screen || output.screenLabel) {
+            const assigned = resolveAssignedDisplay(displays, output)
             if (assigned) return { ...assigned.bounds }
             return outputBounds
         }
