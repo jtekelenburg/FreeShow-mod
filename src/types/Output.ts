@@ -20,6 +20,8 @@ export interface Output {
     cropping?: Cropping
     blending?: { left: number; right: number; rotate: number; opacity: number; centered: boolean; offset: number }
     screen: string | null
+    /** Optional monitor label hint for recovery if Electron changes its numeric display ID. */
+    screenLabel?: string
     alwaysOnTop?: boolean
     transparent?: boolean
     ndi?: boolean
